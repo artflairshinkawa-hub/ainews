@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+# Virtualenv
+venv/
+.venv/
+env/
+.env
+# Streamlit
+.streamlit/secrets.toml
+# VSCode
+.vscode/
+# Artifacts
+.gemini/
