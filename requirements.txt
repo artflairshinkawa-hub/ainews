@@ -3,4 +3,3 @@ feedparser
 beautifulsoup4
 pandas
 requests
-extra-streamlit-components
