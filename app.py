@@ -7,9 +7,18 @@ from datetime import datetime
 import requests
 import re
 from urllib.parse import quote
+import extra_streamlit_components as stx
 
 # Page Config
 st.set_page_config(page_title="AIニュース Pro", page_icon="🤍", layout="wide")
+
+
+# --- Cookie Manager setup ---
+@st.cache_resource(experimental_allow_widgets=True)
+def get_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_manager()
 
 # --- Session State ---
 if 'theme' not in st.session_state:
@@ -17,9 +26,9 @@ if 'theme' not in st.session_state:
 if 'bookmarks' not in st.session_state:
     st.session_state.bookmarks = []
 if 'recommendation_keywords' not in st.session_state:
-    # Load keywords from URL params if available
-    params = st.query_params.get("keywords", "")
-    st.session_state.recommendation_keywords = params.split(",") if params else []
+    # Load keywords from Cookie if available
+    cookie_val = cookie_manager.get(cookie="news_keywords")
+    st.session_state.recommendation_keywords = cookie_val.split(",") if cookie_val else []
 if 'date_filter' not in st.session_state:
     st.session_state.date_filter = "すべて"
 
@@ -465,8 +474,8 @@ with st.sidebar:
             if len(st.session_state.recommendation_keywords) < 5:
                 st.session_state.recommendation_keywords.append(new_kw)
                 st.session_state.new_keyword_input = ""  # Clear input
-                # Update URL params
-                st.query_params["keywords"] = ",".join(st.session_state.recommendation_keywords)
+                # Update Cookie (expires in 30 days)
+                cookie_manager.set("news_keywords", ",".join(st.session_state.recommendation_keywords), expires_at=datetime.now().replace(year=datetime.now().year + 1))
     
     new_keyword = st.text_input(
         "興味のあるキーワードを追加（Enterで追加）", 
@@ -486,8 +495,8 @@ with st.sidebar:
             with col2:
                 if st.button("✕", key=f"remove_kw_{i}", use_container_width=True):
                     st.session_state.recommendation_keywords.pop(i)
-                    # Update URL params
-                    st.query_params["keywords"] = ",".join(st.session_state.recommendation_keywords)
+                    # Update Cookie (expires in 30 days)
+                    cookie_manager.set("news_keywords", ",".join(st.session_state.recommendation_keywords), expires_at=datetime.now().replace(year=datetime.now().year + 1))
                     st.rerun()
     
     st.divider()
