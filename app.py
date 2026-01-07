@@ -255,6 +255,32 @@ def get_recommended_articles(keywords, max_articles=30):
     scored_articles.sort(reverse=True, key=lambda x: x[0])
     return scored_articles[:max_articles]
 
+def get_search_results(query):
+    """Search for a keyword across multiple sources."""
+    if not query: return []
+    
+    search_sources = [
+        ("Bing News", "SEARCH"),
+        ("Google News", "SEARCH"),
+        ("Qiita", "SEARCH"),
+        ("Zenn", "SEARCH")
+    ]
+    
+    results = []
+    seen_links = set()
+    
+    for source, cat_code in search_sources:
+        try:
+            articles = fetch_news(source, cat_code, query)
+            for article in articles:
+                if article['link'] not in seen_links:
+                    results.append(article)
+                    seen_links.add(article['link'])
+        except:
+            continue
+            
+    return results
+
 
 # --- Design ---
 st.markdown(f"""
@@ -409,26 +435,25 @@ with st.sidebar:
         cats = {
             "主要": "HEADLINES", "IT・科学": "TECHNOLOGY", "経済": "BUSINESS", "国際": "International", 
             "エンタメ": "Entertainment", "スポーツ": "Sports", "国内": "Domestic", "ライフ": "Life", 
-            "地域": "Local", "キーワード検索": "SEARCH"
+            "地域": "Local"
         }
     elif source == "NHK ニュース":
         cats = {
             "主要": "HEADLINES", "社会": "Social", "政治": "Politics", "国際": "International", 
-            "経済": "Economy", "科学・文化": "Science", "スポーツ": "Sports", "地域": "Local",
-            "キーワード検索": "SEARCH"
+            "経済": "Economy", "科学・文化": "Science", "スポーツ": "Sports", "地域": "Local"
         }
     elif source == "Google News":
         cats = {
             "トップ": "HEADLINES", "テクノロジー": "TECHNOLOGY", "ビジネス": "BUSINESS", "国際": "International", 
-            "エンタメ": "Entertainment", "スポーツ": "Sports", "科学": "Science", "健康": "Health", "キーワード検索": "SEARCH"
+            "エンタメ": "Entertainment", "スポーツ": "Sports", "科学": "Science", "健康": "Health"
         }
     elif source == "ITmedia":
         cats = {
             "総合": "ALL", "モバイル": "MOBILE", "エンタープライズ": "ENTERPRISE", 
-            "PC USER": "PCUSER", "ビジネスオンライン": "BUSINESS", "キーワード検索": "SEARCH"
+            "PC USER": "PCUSER", "ビジネスオンライン": "BUSINESS"
         }
     elif source in ["Qiita", "Zenn"]:
-        cats = {"トレンド": "HEADLINES", "タグ/トピック検索": "SEARCH"}
+        cats = {"トレンド": "HEADLINES"}
     elif source == "ナタリー":
         cats = {
             "音楽": "MUSIC", "映画": "MOVIE", "お笑い": "COMEDY", "コミック": "COMIC"
@@ -439,13 +464,12 @@ with st.sidebar:
         cats = {
             "トップ": "HEADLINES", "ビジネス": "Business", "テクノロジー": "Technology", 
             "エンタメ": "Entertainment", "政治": "Politics", "科学": "Science", 
-            "健康": "Health", "スポーツ": "Sports", "国際": "World", "国内": "Japan",
-            "キーワード検索": "SEARCH"
+            "健康": "Health", "スポーツ": "Sports", "国際": "World", "国内": "Japan"
         }
         
     cat_label = st.selectbox("カテゴリー", list(cats.keys()), key=f"cat_select_{source}")
     cat_code = cats[cat_label]
-    query = st.text_input("検索ワード", "AI", key=f"query_input_{source}") if cat_code == "SEARCH" else cat_label
+    # Query input removed from here as it moved to global search
     
     st.divider()
     
@@ -499,7 +523,7 @@ with st.sidebar:
 st.markdown(f"<h1>{source}</h1>", unsafe_allow_html=True)
 st.markdown(f"<p style='color:{c['sub_text']}; font-size:1.3rem; font-weight:600; margin-top:-15px;'>{cat_label}</p>", unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["最新ニュース", "おすすめ", "保存済み"])
+tab1, tab2, tab3, tab4 = st.tabs(["最新ニュース", "おすすめ", "保存済み", "検索"])
 
 with tab1:
     content_col = st.container()
@@ -644,7 +668,71 @@ with tab3:
                 if item['summary']:
                     st.markdown(f'<div class="news-excerpt">{item["summary"]}</div>', unsafe_allow_html=True)
                 
-                if st.button("削除 🗑️", key=f"rm_{i}", use_container_width=True):
+                if st.button("削除 🗑️", key=f"del_{i}", use_container_width=True):
                     st.session_state.bookmarks.pop(i)
                     st.rerun()
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+
+with tab4:
+    st.markdown("### 全ソース横断検索 🔍")
+    
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        # Check date filter state for context
+        filter_label = f" (期間: {st.session_state.date_filter})" if st.session_state.date_filter != "すべて" else ""
+        search_query = st.text_input(f"検索ワードを入力{filter_label}", placeholder="例: 生成AI, 半導体, 選挙", key="global_search_input")
+    with col2:
+        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+        search_btn = st.button("検索", use_container_width=True, type="primary")
+        
+    if search_query:
+        with st.spinner(f"'{search_query}' で全ソースを検索中..."):
+            results = get_search_results(search_query)
+            
+            # Apply date filter
+            filtered_results = []
+            if st.session_state.date_filter != "すべて":
+                now = datetime.now()
+                for item in results:
+                    try:
+                        pub_date = pd.to_datetime(item['published'], utc=True).replace(tzinfo=None)
+                        days_diff = (now - pub_date).days
+                        if st.session_state.date_filter == "今日" and days_diff < 1:
+                            filtered_results.append(item)
+                        elif st.session_state.date_filter == "過去3日" and days_diff < 3:
+                            filtered_results.append(item)
+                        elif st.session_state.date_filter == "過去1週間" and days_diff < 7:
+                            filtered_results.append(item)
+                    except:
+                        filtered_results.append(item)
+            else:
+                filtered_results = results
+
+            st.markdown(f"**検索結果: {len(filtered_results)} 件**")
+            
+            if not filtered_results:
+                st.info("該当する記事が見つかりませんでした。")
+            else:
+                cols = st.columns(3)
+                for i, item in enumerate(filtered_results):
+                    with cols[i % 3]:
+                        # Helper to display card logic (reusing similar structure)
+                        st.markdown(f'<div class="news-item">', unsafe_allow_html=True)
+                        ik = f"sic_{i}_{item['link']}" # unique key
+                        img = item.get('img_src')
+                        
+                        st.markdown(f'<div class="news-meta">{item["source"]} • {item["published"]}</div>', unsafe_allow_html=True)
+                        if img: st.markdown(f'<a href="{item["link"]}" target="_blank"><img src="{img}" class="news-thumb"></a>', unsafe_allow_html=True)
+                        st.markdown(f'<a href="{item["link"]}" target="_blank" class="news-title-link"><div class="news-title">{item["title"]}</div></a>', unsafe_allow_html=True)
+                        
+                        if item['summary']:
+                            st.markdown(f'<div class="news-excerpt">{item["summary"]}</div>', unsafe_allow_html=True)
+                            
+                        if st.button("保存 🔖", key=f"search_sav_{i}", use_container_width=True):
+                            if not any(b['link'] == item['link'] for b in st.session_state.bookmarks):
+                                st.session_state.bookmarks.append(item)
+                                st.toast("保存しました")
+                        
+                
                 st.markdown('</div>', unsafe_allow_html=True)
