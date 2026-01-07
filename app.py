@@ -14,7 +14,6 @@ st.set_page_config(page_title="AIニュース Pro", page_icon="🤍", layout="wi
 
 
 # --- Cookie Manager setup ---
-@st.cache_resource
 def get_manager():
     return stx.CookieManager()
 
