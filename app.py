@@ -533,7 +533,7 @@ with tab1:
             if st.button("更新", use_container_width=True): st.rerun()
         with c2:
             if st.button("🖼️ 全画像を読み込む", use_container_width=True):
-                items = fetch_news(source, cat_code, query)
+                items = fetch_news(source, cat_code, "")
                 for it in items:
                     ik = f"ic_{it['id']}"
                     if not it['img_src'] and ik not in st.session_state:
@@ -541,7 +541,7 @@ with tab1:
                 st.rerun()
 
         with st.spinner("取得中..."):
-            news_items = fetch_news(source, cat_code, query)
+            news_items = fetch_news(source, cat_code, "")
             
         if news_items:
             cols = st.columns(3)
