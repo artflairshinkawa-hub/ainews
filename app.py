@@ -17,7 +17,9 @@ if 'theme' not in st.session_state:
 if 'bookmarks' not in st.session_state:
     st.session_state.bookmarks = []
 if 'recommendation_keywords' not in st.session_state:
-    st.session_state.recommendation_keywords = []
+    # Load keywords from URL params if available
+    params = st.query_params.get("keywords", "")
+    st.session_state.recommendation_keywords = params.split(",") if params else []
 if 'date_filter' not in st.session_state:
     st.session_state.date_filter = "すべて"
 
@@ -463,6 +465,8 @@ with st.sidebar:
             if len(st.session_state.recommendation_keywords) < 5:
                 st.session_state.recommendation_keywords.append(new_kw)
                 st.session_state.new_keyword_input = ""  # Clear input
+                # Update URL params
+                st.query_params["keywords"] = ",".join(st.session_state.recommendation_keywords)
     
     new_keyword = st.text_input(
         "興味のあるキーワードを追加（Enterで追加）", 
@@ -482,6 +486,8 @@ with st.sidebar:
             with col2:
                 if st.button("✕", key=f"remove_kw_{i}", use_container_width=True):
                     st.session_state.recommendation_keywords.pop(i)
+                    # Update URL params
+                    st.query_params["keywords"] = ",".join(st.session_state.recommendation_keywords)
                     st.rerun()
     
     st.divider()
