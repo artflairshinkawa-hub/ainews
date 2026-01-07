@@ -1,0 +1,9 @@
+import feedparser
+
+slugs = ["life", "lifestyle", "living", "life-style", "zatsu", "it", "top-picks"]
+
+for slug in slugs:
+    url = f"https://news.yahoo.co.jp/rss/topics/{slug}.xml"
+    feed = feedparser.parse(url)
+    print(f"Slug: {slug}, Entries: {len(feed.entries)}, URL: {url}")
+埋め込み

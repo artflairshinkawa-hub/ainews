@@ -1,0 +1,21 @@
+import requests
+from bs4 import BeautifulSoup
+
+urls = {
+    "News": "https://rss.itmedia.co.jp/rss/2.0/news.xml",
+    "Netorabo": "https://rss.itmedia.co.jp/rss/2.0/netorabo.xml"
+}
+
+for label, url in urls.items():
+    print(f"--- {label} ---")
+    response = requests.get(url)
+    soup = BeautifulSoup(response.content, "xml")
+    items = soup.find_all("item")
+    print(f"  Item count (xml): {len(items)}")
+    if items:
+        print(f"  First title: {items[0].title.text if items[0].title else 'No Title'}")
+    
+    # Check if it's RSS 1.0 (RDF)
+    rdf_items = soup.find_all("item") # RSS 1.0 also uses item
+    print(f"  RDF Items: {len(rdf_items)}")
+埋め込み
