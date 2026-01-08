@@ -165,21 +165,25 @@ def send_auth_email(target_email, subject, body):
         
         # Create message
         msg = MIMEMultipart()
-        msg['From'] = f"AI News Pro <{sender_email}>"
+        msg['From'] = sender_email # Simplified to avoid rejection
         msg['To'] = target_email
         msg['Subject'] = subject
         
         msg.attach(MIMEText(body, 'plain'))
         
         # Connect and send
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls() # Enable security
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
+        server.starttls()
         server.login(sender_email, sender_password)
-        server.send_message(msg)
+        # Explicitly specify envelope addresses
+        server.send_message(msg, from_addr=sender_email, to_addrs=[target_email])
         server.quit()
         return True
     except Exception as e:
-        st.error(f"メール送信エラー: {str(e)}")
+        if "5.7.1" in str(e):
+             st.error(f"メール送信エラー (5.7.1): さくらサーバーの「国外IPアドレスフィルター」が有効な可能性があります。コントロールパネルから解除してください。")
+        else:
+             st.error(f"メール送信エラー: {str(e)}")
         return False
 
 @st.cache_data(ttl=300)
