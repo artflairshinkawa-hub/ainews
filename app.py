@@ -822,7 +822,6 @@ with st.sidebar:
                 st.session_state.new_mute_input = ""
                 if st.session_state.user:
                     db.save_user_data(st.session_state.user, 'mute_words', st.session_state.mute_words)
-                st.rerun()
         
         st.text_input("除外したい単語", key="new_mute_input", on_change=add_mute)
         
@@ -917,7 +916,6 @@ with st.sidebar:
                     # Save to DB
                     if st.session_state.user:
                         db.save_user_data(st.session_state.user, 'keywords', st.session_state.recommendation_keywords)
-                    st.rerun()
                 else:
                     st.warning("登録できるキーワードは5つまでです")
         elif new_kw in st.session_state.recommendation_keywords:
