@@ -6,13 +6,33 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import requests
 import re
-from urllib.parse import quote
+import base64
+from urllib.parse import quote, urlparse
 
-# Page Config
-st.set_page_config(page_title="AIニュース Pro", page_icon="🤍", layout="wide")
+def setup_touch_icon(image_path="app_icon.png"):
+    """Injects Apple Touch Icon using base64 encoding."""
+    try:
+        with open(image_path, "rb") as f:
+            img_bytes = f.read()
+        b64_img = base64.b64encode(img_bytes).decode('utf-8')
+        # mime type detection (simple)
+        mime = "image/png"
+        
+        st.markdown(
+            f"""
+            <link rel="apple-touch-icon" href="data:{mime};base64,{b64_img}">
+            <link rel="icon" href="data:{mime};base64,{b64_img}">
+            """,
+            unsafe_allow_html=True
+        )
+    except Exception as e:
+        pass # Fail silently if icon missing
 
+# --- Setup & Config ---
+st.set_page_config(page_title="AI News Pro", page_icon="🍌", layout="wide")
+setup_touch_icon()
 
-# --- Session State ---
+# --- Custom Theme & CSS ---
 if 'theme' not in st.session_state:
     st.session_state.theme = 'Dark'
 if 'bookmarks' not in st.session_state:
@@ -90,6 +110,57 @@ def fetch_og_image(url):
 
 @st.cache_data(ttl=300)
 def fetch_news(source, category_code, query_text):
+    """Fetch and parse news from RSS feeds."""
+    
+    # --- Global Top Aggregation Logic ---
+    if source == "⚡ 総合トップ":
+        # Sources to aggregate
+        agg_sources = [
+            ("Bing News", "HEADLINES"),
+            ("Yahoo! ニュース", "HEADLINES"),
+            ("ライブドアニュース", "HEADLINES"),
+            ("Google News", "HEADLINES"),
+            ("NHK ニュース", "HEADLINES")
+        ]
+        
+        all_items = []
+        # Reuse fetch_news for each source (recursive call but with different source arg)
+        # To avoid infinite recursion, we hardcode source names that are NOT "⚡ 総合トップ"
+        for src, cat in agg_sources:
+            try:
+                items = fetch_news(src, cat, "")
+                all_items.extend(items)
+            except:
+                continue
+        
+        # Sort by published date (newest first)
+        # Note: published is a string, assuming ISO format or similar sorts correctly roughly.
+        # Ideally, should convert to datetime, but for now string sort might suffice if format is consistent "YYYY-MM-DD..."
+        # Our parsing standardizes to YYYY-MM-DD HH:MM:SS
+        all_items.sort(key=lambda x: x['published'], reverse=True)
+        
+        # Take top 10
+        top_10 = all_items[:10]
+        
+        # Fetch images for top 10 if missing
+        for item in top_10:
+            if not item['img_src']:
+                 # Check cache first
+                ik = f"ic_{item['id']}"
+                if ik in st.session_state:
+                    item['img_src'] = st.session_state[ik]
+                else:
+                    # Fetch OG
+                    try:
+                        og_url = fetch_og_image(item['link'])
+                        if og_url:
+                            item['img_src'] = og_url
+                            st.session_state[ik] = og_url # Cache it
+                    except:
+                        pass
+        return top_10
+
+    # --- Standard Source Logic ---
     url = ""
     if source == "Yahoo! ニュース":
         # Using /categories/ for most to get 50 articles and fix "Life"
@@ -114,8 +185,8 @@ def fetch_news(source, category_code, query_text):
         }
         url = f"https://www.nhk.or.jp/rss/news/{mapping.get(category_code, 'cat0.xml')}"
     elif source == "Bing News":
-        q = query_text if category_code != "HEADLINES" else "Top+Stories"
-        url = f"https://www.bing.com/news/search?q={quote(q)}&format=rss&cc=JP"
+        q = query_text if category_code != "HEADLINES" else "トップニュース"
+        url = f"https://www.bing.com/news/search?q={quote(q)}&format=rss&cc=JP&setLang=ja-JP"
     elif source == "Google News":
         # Mapping standard labels to working Google News Topic IDs
         g_map = {
@@ -220,15 +291,29 @@ def get_recommended_articles(keywords, max_articles=30):
     if not keywords:
         return []
     
-    all_sources = [
-        "ナタリー", "Yahoo! ニュース", "ライブドアニュース", "NHK ニュース", 
-        "Google News", "Bing News", "Gigazine", "ITmedia", 
-        "CNET Japan", "TechCrunch Japan", "Qiita", "Zenn"
+    # --- News Sources & Categories ---
+    news_sources = [
+        "⚡ 総合トップ",
+        "Bing News",
+        "Yahoo! ニュース", 
+        "ライブドアニュース", 
+        "NHK ニュース",
+        "Google News", 
+        "Gigazine", 
+        "ITmedia",
+        "CNET Japan",
+        "TechCrunch Japan",
+        "Qiita",
+        "Zenn",
+        "ナタリー"
     ]
     all_articles = []
     
     # Collect articles from all sources
-    for source in all_sources:
+    for source in news_sources:
+        # Skip "⚡ 総合トップ" to avoid double fetching or complex logic here
+        if source == "⚡ 総合トップ":
+            continue
         try:
             articles = fetch_news(source, "HEADLINES", "")
             for article in articles:
@@ -327,7 +412,6 @@ st.markdown(f"""
     [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
     [data-testid="stSidebar"] label,
     [data-testid="stSidebar"] span,
-    [data-testid="stSidebar"] p,
     [data-testid="stSidebar"] div {{
         color: {c['text']} !important;
         font-weight: 600 !important;
@@ -407,31 +491,42 @@ st.markdown(f"""
 
 # --- Sidebar ---
 with st.sidebar:
-    st.markdown(f"""
-        <div class="sidebar-logo">
-            <svg viewBox="0 0 24 24" width="35" height="35" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="{c['text']}"/>
-            </svg>
-            <span class="logo-text">AI News Pro</span>
-        </div>
-    """, unsafe_allow_html=True)
-
+    st.markdown(f"<h1 style='color: {c['text']}; display: flex; align-items: center; gap: 10px;'><span style='font-size: 1.5em;'>🍌</span> AI News Pro</h1>", unsafe_allow_html=True)
+    
     st.markdown("### Settings")
     theme_btn = st.radio("テーマ選択", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "Dark" else 1)
     if theme_btn != st.session_state.theme:
         st.session_state.theme = theme_btn
         st.rerun()
 
+    # Define news sources
+    news_sources = [
+        "⚡ 総合トップ",
+        "Bing News",
+        "Yahoo! ニュース", 
+        "ライブドアニュース", 
+        "NHK ニュース",
+        "Google News", 
+        "Gigazine", 
+        "ITmedia",
+        "CNET Japan",
+        "TechCrunch Japan",
+        "Qiita",
+        "Zenn",
+        "ナタリー"
+    ]
+
     source = st.selectbox(
         "ニュースソース", 
-        ["ナタリー", "Yahoo! ニュース", "ライブドアニュース", "NHK ニュース", 
-         "Google News", "Bing News", "Gigazine", "ITmedia", 
-         "CNET Japan", "TechCrunch Japan", "Qiita", "Zenn"], 
-        index=2, 
+        news_sources, 
+        index=0, # Set "⚡ 総合トップ" as default
         key="news_source_select"
     )
     
-    if source == "Yahoo! ニュース":
+    cats = {}
+    if source == "⚡ 総合トップ":
+        cats = {"最新トレンド": "HEADLINES"}
+    elif source == "Yahoo! ニュース":
         cats = {
             "主要": "HEADLINES", "IT・科学": "TECHNOLOGY", "経済": "BUSINESS", "国際": "International", 
             "エンタメ": "Entertainment", "スポーツ": "Sports", "国内": "Domestic", "ライフ": "Life", 
@@ -515,9 +610,8 @@ with st.sidebar:
                     st.query_params["keywords"] = ",".join(st.session_state.recommendation_keywords)
                     st.rerun()
     
+    
     st.divider()
-    auto_ref = st.toggle("自動更新 (10分)")
-    if auto_ref: st.markdown('<meta http-equiv="refresh" content="600">', unsafe_allow_html=True)
 
 # --- Main Content ---
 st.markdown(f"<h1>{source}</h1>", unsafe_allow_html=True)
