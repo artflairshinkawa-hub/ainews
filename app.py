@@ -139,10 +139,10 @@ def fetch_news(source, category_code, query_text):
         # Our parsing standardizes to YYYY-MM-DD HH:MM:SS
         all_items.sort(key=lambda x: x['published'], reverse=True)
         
-        # Take top 10
-        top_10 = all_items[:10]
+        # Take top 30
+        top_items = all_items[:30]
         
-        return top_10
+        return top_items
 
     # --- Standard Source Logic ---
     url = ""
@@ -277,59 +277,45 @@ def calculate_article_score(article, keywords):
     
     return score
 
-def get_recommended_articles(keywords, max_articles=30):
-    """Aggregate articles from all sources and score them."""
+def get_recommended_articles(keywords):
+    """
+    Fetch articles by actively searching for each keyword in Bing and Google News.
+    This ensures specific topics (e.g., 'Frieren', 'AI') are found even if not in headlines.
+    """
     if not keywords:
         return []
     
-    # --- News Sources & Categories ---
-    news_sources = [
-        "⚡ 総合トップ",
-        "Bing News",
-        "Yahoo! ニュース", 
-        "ライブドアニュース", 
-        "NHK ニュース",
-        "Google News", 
-        "Gigazine", 
-        "ITmedia",
-        "CNET Japan",
-        "TechCrunch Japan",
-        "Qiita",
-        "Zenn",
-        "ナタリー"
-    ]
     all_articles = []
+    seen_links = set()
     
-    # Collect articles from all sources
-    for source in news_sources:
-        # Skip "⚡ 総合トップ" to avoid double fetching or complex logic here
-        if source == "⚡ 総合トップ":
-            continue
-        try:
-            articles = fetch_news(source, "HEADLINES", "")
-            for article in articles:
-                article['source'] = source
-            all_articles.extend(articles)
-        except:
-            continue
+    # Active search for each keyword
+    # Limiting to Bing & Google for best search performance
+    search_targets = ["Bing News", "Google News"]
     
-    # Score and filter articles
-    scored_articles = []
-    seen_titles = set()
+    progress_text = st.empty()
     
-    for article in all_articles:
-        # Deduplicate by title
-        if article['title'] in seen_titles:
-            continue
-        seen_titles.add(article['title'])
-        
-        score = calculate_article_score(article, keywords)
-        if score > 0:
-            scored_articles.append((score, article))
+    for i, kw in enumerate(keywords):
+        # Determine source rotation or query both?
+        # Querying both for max recall.
+        for source in search_targets:
+            try:
+                # Use cached fetch
+                items = fetch_news(source, "SEARCH", kw)
+                for item in items:
+                    if item['link'] not in seen_links:
+                        # Calculate score immediately
+                        score = calculate_article_score(item, keywords)
+                        if score > 0:
+                            all_articles.append((score, item))
+                            seen_links.add(item['link'])
+            except Exception:
+                continue
+                
+    # Sort by score (descending)
+    all_articles.sort(reverse=True, key=lambda x: x[0])
     
-    # Sort by score and return top articles with scores
-    scored_articles.sort(reverse=True, key=lambda x: x[0])
-    return scored_articles[:max_articles]
+    # Return top items
+    return all_articles[:50]
 
 def get_search_results(query):
     """Search for a keyword across multiple sources."""
