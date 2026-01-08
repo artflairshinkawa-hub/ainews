@@ -142,22 +142,6 @@ def fetch_news(source, category_code, query_text):
         # Take top 10
         top_10 = all_items[:10]
         
-        # Fetch images for top 10 if missing
-        for item in top_10:
-            if not item['img_src']:
-                 # Check cache first
-                ik = f"ic_{item['id']}"
-                if ik in st.session_state:
-                    item['img_src'] = st.session_state[ik]
-                else:
-                    # Fetch OG
-                    try:
-                        og_url = fetch_og_image(item['link'])
-                        if og_url:
-                            item['img_src'] = og_url
-                            st.session_state[ik] = og_url # Cache it
-                    except:
-                        pass
         return top_10
 
     # --- Standard Source Logic ---
@@ -185,7 +169,14 @@ def fetch_news(source, category_code, query_text):
         }
         url = f"https://www.nhk.or.jp/rss/news/{mapping.get(category_code, 'cat0.xml')}"
     elif source == "Bing News":
-        q = query_text if category_code != "HEADLINES" else "トップニュース"
+        # Map category codes to Japanese search terms
+        bing_map = {
+            "HEADLINES": "トップニュース", "Business": "経済", "Technology": "テクノロジー",
+            "Entertainment": "工ンタメ", "Politics": "政治", "Science": "科学",
+            "Health": "健康", "Sports": "スポーツ", "World": "国際", "Japan": "国内トップ"
+        }
+        # Use query_text if provided (global search), otherwise use category mapping
+        q = query_text if query_text else bing_map.get(category_code, "トップニュース")
         url = f"https://www.bing.com/news/search?q={quote(q)}&format=rss&cc=JP&setLang=ja-JP"
     elif source == "Google News":
         # Mapping standard labels to working Google News Topic IDs
