@@ -52,13 +52,7 @@ ALL_SOURCES = [
 
 # --- Session State ---
 if 'user' not in st.session_state:
-    # Try to load persistent session
-    valid_user = db.get_valid_session()
-    st.session_state.user = valid_user if valid_user else None
-
-# Update session activity if logged in
-if st.session_state.user:
-    db.update_session(st.session_state.user)
+    st.session_state.user = None
 
 
 # Logic to load user data if logged in
@@ -646,11 +640,25 @@ if 'guest_mode' not in st.session_state:
 if 'auth_step' not in st.session_state:
     st.session_state.auth_step = 'login' # login, 2fa, recovery_code, recovery_pass
 
-# Helper to clear auth state
-def clear_auth_state():
+# Helper to reset all settings to defaults
+def reset_to_defaults():
+    st.session_state.theme = 'Dark'
+    st.session_state.bookmarks = []
+    st.session_state.recommendation_keywords = []
+    st.session_state.mute_words = []
+
+# Helper to clear temporary auth flow state
+def clear_auth_flow():
     st.session_state.auth_step = 'login'
     st.session_state.temp_email = None
     st.session_state.temp_secret = None
+
+# Full logout helper
+def logout():
+    st.session_state.user = None
+    st.session_state.guest_mode = False
+    clear_auth_flow()
+    reset_to_defaults()
 
 if not st.session_state.user and not st.session_state.guest_mode:
     # --- Login/Register/Recovery UI ---
@@ -674,15 +682,13 @@ if not st.session_state.user and not st.session_state.guest_mode:
             if st.button("認証", use_container_width=True, type="primary"):
                 if db.verify_2fa(st.session_state.temp_email, code_input):
                     st.session_state.user = st.session_state.temp_email
-                    # Create/Update persistent session
-                    db.update_session(st.session_state.user)
-                    load_user_session()
-                    clear_auth_state()
+                    load_user_session() # Load settings for the new user
+                    clear_auth_flow()   # Clear intermediate auth state
                     st.rerun()
                 else:
                     st.error("コードが間違っています")
             if st.button("戻る", use_container_width=True):
-                clear_auth_state()
+                clear_auth_flow()
                 st.rerun()
 
         # Recovery Code Screen
@@ -790,11 +796,7 @@ with st.sidebar:
     if st.session_state.user:
         st.caption(f"Logged in: {st.session_state.user}")
         if st.button("ログアウト", use_container_width=True):
-            st.session_state.user = None
-            st.session_state.guest_mode = False
-            # Clear persistent session
-            db.clear_session()
-            clear_auth_state()
+            logout()
             st.rerun()
     else:
         st.caption("Guest Mode")

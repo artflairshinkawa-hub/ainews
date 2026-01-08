@@ -36,55 +36,6 @@ def init_db():
         )
     ''')
     
-    # Local Session Table (Single user context for local app)
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS local_session (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            email TEXT NOT NULL,
-            last_active REAL NOT NULL
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
-
-# --- Session Management ---
-def update_session(email):
-    """Create or update the current session."""
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    now = time.time()
-    # Replace the single row (id=1)
-    c.execute("INSERT OR REPLACE INTO local_session (id, email, last_active) VALUES (1, ?, ?)", (email, now))
-    conn.commit()
-    conn.close()
-
-def get_valid_session():
-    """
-    Check if a valid session exists. 
-    Returns email if valid, None otherwise.
-    """
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT email, last_active FROM local_session WHERE id = 1")
-    row = c.fetchone()
-    conn.close()
-    
-    if row:
-        email, last_active = row
-        if time.time() - last_active < SESSION_TIMEOUT:
-            # Valid session
-            return email
-        else:
-            # Expired
-            clear_session()
-    return None
-
-def clear_session():
-    """Clear the current session (Logout)."""
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("DELETE FROM local_session WHERE id = 1")
     conn.commit()
     conn.close()
 
