@@ -1,0 +1,200 @@
+import sqlite3
+import hashlib
+import json
+import os
+import random
+import string
+import time
+
+DB_FILE = "news_app_v2.db"
+SESSION_TIMEOUT = 48 * 60 * 60  # 48 hours in seconds
+
+def init_db():
+    """Initialize the database tables."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    # Users table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            email TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL,
+            two_factor_secret TEXT,
+            recovery_code TEXT,
+            auth_code TEXT
+        )
+    ''')
+    
+    # User Settings/Data table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS user_data (
+            email TEXT,
+            key TEXT,
+            value TEXT,
+            PRIMARY KEY (email, key),
+            FOREIGN KEY (email) REFERENCES users (email)
+        )
+    ''')
+    
+    # Local Session Table (Single user context for local app)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS local_session (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            email TEXT NOT NULL,
+            last_active REAL NOT NULL
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+# --- Session Management ---
+def update_session(email):
+    """Create or update the current session."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    now = time.time()
+    # Replace the single row (id=1)
+    c.execute("INSERT OR REPLACE INTO local_session (id, email, last_active) VALUES (1, ?, ?)", (email, now))
+    conn.commit()
+    conn.close()
+
+def get_valid_session():
+    """
+    Check if a valid session exists. 
+    Returns email if valid, None otherwise.
+    """
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT email, last_active FROM local_session WHERE id = 1")
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        email, last_active = row
+        if time.time() - last_active < SESSION_TIMEOUT:
+            # Valid session
+            return email
+        else:
+            # Expired
+            clear_session()
+    return None
+
+def clear_session():
+    """Clear the current session (Logout)."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM local_session WHERE id = 1")
+    conn.commit()
+    conn.close()
+
+# --- User Management ---
+def hash_password(password):
+    """Hash a password for storage."""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def create_user(email, password):
+    """Register a new user with email."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        # Generate a random base32-like string as a mock 2FA secret (for future use/display)
+        secret = ''.join(random.choices(string.ascii_uppercase + string.digits, k=16))
+        
+        c.execute("INSERT INTO users (email, password_hash, two_factor_secret) VALUES (?, ?, ?)", 
+                  (email, hash_password(password), secret))
+        conn.commit()
+        return secret 
+    except sqlite3.IntegrityError:
+        return None 
+    finally:
+        conn.close()
+
+def verify_user(email, password):
+    """Verify login credentials. Returns 2FA secret if valid, None otherwise."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT password_hash, two_factor_secret FROM users WHERE email = ?", (email,))
+    row = c.fetchone()
+    conn.close()
+    
+    if row and row[0] == hash_password(password):
+        return row[1] 
+    return None
+
+def verify_2fa(email, code):
+    """Verify 2FA auth code."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT auth_code FROM users WHERE email = ?", (email,))
+    row = c.fetchone()
+    conn.close()
+    
+    if row and row[0] == code:
+        return True 
+    return False
+
+def set_auth_code(email):
+    """Generate and save a random 6-digit auth code."""
+    code = ''.join(random.choices(string.digits, k=6))
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE users SET auth_code = ? WHERE email = ?", (code, email))
+    updated = c.rowcount > 0
+    conn.commit()
+    conn.close()
+    return code if updated else None
+
+def set_recovery_code(email):
+    """Generate and save a recovery code."""
+    code = ''.join(random.choices(string.digits, k=6))
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE users SET recovery_code = ? WHERE email = ?", (code, email))
+    updated = c.rowcount > 0
+    conn.commit()
+    conn.close()
+    return code if updated else None
+
+def verify_recovery_code(email, code):
+    """Verify recovery code."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT recovery_code FROM users WHERE email = ?", (email,))
+    row = c.fetchone()
+    conn.close()
+    
+    if row and row[0] == code:
+        return True
+    return False
+
+def update_password(email, new_password):
+    """Update password and clear recovery code."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE users SET password_hash = ?, recovery_code = NULL WHERE email = ?", 
+              (hash_password(new_password), email))
+    conn.commit()
+    conn.close()
+
+def save_user_data(email, key, value):
+    """Save user specific data."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    json_val = json.dumps(value)
+    c.execute("INSERT OR REPLACE INTO user_data (email, key, value) VALUES (?, ?, ?)",
+              (email, key, json_val))
+    conn.commit()
+    conn.close()
+
+def load_user_data(email, key, default=None):
+    """Load user specific data."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT value FROM user_data WHERE email = ? AND key = ?", (email, key))
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        return json.loads(row[0])
+    return default

@@ -7,7 +7,19 @@ from datetime import datetime
 import requests
 import re
 import base64
+import difflib
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from urllib.parse import quote, urlparse
+import random
+# Database module
+import database as db
+
+# Initialize DB
+db.init_db()
+
+# Page Config
 
 def setup_touch_icon(image_path="app_icon.png"):
     """Injects Apple Touch Icon using base64 encoding."""
@@ -32,17 +44,46 @@ def setup_touch_icon(image_path="app_icon.png"):
 st.set_page_config(page_title="AI News Pro", page_icon="🍌", layout="wide")
 setup_touch_icon()
 
-# --- Custom Theme & CSS ---
+ALL_SOURCES = [
+    "Bing News", "Yahoo! ニュース", "ライブドアニュース", "NHK ニュース", 
+    "Google News", "Gigazine", "ITmedia", "CNET Japan", 
+    "TechCrunch Japan", "Qiita", "Zenn", "ナタリー"
+]
+
+# --- Session State ---
+if 'user' not in st.session_state:
+    # Try to load persistent session
+    valid_user = db.get_valid_session()
+    st.session_state.user = valid_user if valid_user else None
+
+# Update session activity if logged in
+if st.session_state.user:
+    db.update_session(st.session_state.user)
+
+
+# Logic to load user data if logged in
+def load_user_session():
+    if st.session_state.user:
+        username = st.session_state.user
+        st.session_state.recommendation_keywords = db.load_user_data(username, 'keywords', [])
+        st.session_state.bookmarks = db.load_user_data(username, 'bookmarks', [])
+        saved_theme = db.load_user_data(username, 'theme', 'Dark')
+        st.session_state.theme = saved_theme
+        st.session_state.mute_words = db.load_user_data(username, 'mute_words', [])
+
 if 'theme' not in st.session_state:
     st.session_state.theme = 'Dark'
 if 'bookmarks' not in st.session_state:
     st.session_state.bookmarks = []
 if 'recommendation_keywords' not in st.session_state:
-    # Load keywords from URL params if available
-    params = st.query_params.get("keywords", "")
-    st.session_state.recommendation_keywords = params.split(",") if params else []
+    st.session_state.recommendation_keywords = []
 if 'date_filter' not in st.session_state:
     st.session_state.date_filter = "すべて"
+if 'mute_words' not in st.session_state:
+    st.session_state.mute_words = []
+
+# Call load_user_session after initial setup
+load_user_session()
 
 # --- Theme Configuration ---
 theme_colors = {
@@ -108,41 +149,79 @@ def fetch_og_image(url):
     except: pass
     return ""
 
+def send_auth_email(target_email, subject, body):
+    """Send an authentication email using Sakura Server SMTP."""
+    # Check if SMTP secrets are configured
+    if 'smtp' not in st.secrets:
+        st.error("SMTP設定が見つかりません。`st.secrets` を設定してください。")
+        return False
+    
+    try:
+        conf = st.secrets['smtp']
+        smtp_server = conf['host']
+        smtp_port = conf['port']
+        sender_email = conf['user']
+        sender_password = conf['password']
+        
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = f"AI News Pro <{sender_email}>"
+        msg['To'] = target_email
+        msg['Subject'] = subject
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Connect and send
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls() # Enable security
+        server.login(sender_email, sender_password)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        st.error(f"メール送信エラー: {str(e)}")
+        return False
+
 @st.cache_data(ttl=300)
 def fetch_news(source, category_code, query_text):
     """Fetch and parse news from RSS feeds."""
     
     # --- Global Top Aggregation Logic ---
     if source == "⚡ 総合トップ":
-        # Sources to aggregate
-        agg_sources = [
-            ("Bing News", "HEADLINES"),
-            ("Yahoo! ニュース", "HEADLINES"),
-            ("ライブドアニュース", "HEADLINES"),
-            ("Google News", "HEADLINES"),
-            ("NHK ニュース", "HEADLINES")
-        ]
+        # Aggregate from EVERY available source
+        source_configs = {
+            "Bing News": "HEADLINES",
+            "Yahoo! ニュース": "HEADLINES",
+            "ライブドアニュース": "HEADLINES",
+            "Google News": "HEADLINES",
+            "NHK ニュース": "HEADLINES",
+            "Gigazine": "HEADLINES",
+            "ITmedia": "ALL",
+            "CNET Japan": "HEADLINES",
+            "TechCrunch Japan": "HEADLINES",
+            "Qiita": "HEADLINES",
+            "Zenn": "HEADLINES",
+            "ナタリー": "MUSIC"
+        }
         
         all_items = []
-        # Reuse fetch_news for each source (recursive call but with different source arg)
-        # To avoid infinite recursion, we hardcode source names that are NOT "⚡ 総合トップ"
-        for src, cat in agg_sources:
+        seen_links = set()
+        
+        for src, cat in source_configs.items():
             try:
                 items = fetch_news(src, cat, "")
-                all_items.extend(items)
+                for item in items:
+                    if item['link'] not in seen_links:
+                        all_items.append(item)
+                        seen_links.add(item['link'])
             except:
                 continue
         
         # Sort by published date (newest first)
-        # Note: published is a string, assuming ISO format or similar sorts correctly roughly.
-        # Ideally, should convert to datetime, but for now string sort might suffice if format is consistent "YYYY-MM-DD..."
-        # Our parsing standardizes to YYYY-MM-DD HH:MM:SS
         all_items.sort(key=lambda x: x['published'], reverse=True)
         
-        # Take top 30
-        top_items = all_items[:30]
-        
-        return top_items
+        # Take top 50
+        return all_items[:50]
 
     # --- Standard Source Logic ---
     url = ""
@@ -243,10 +322,20 @@ def fetch_news(source, category_code, query_text):
                         break
             summary_text, html_img = parse_summary(raw_sum)
             if not img: img = html_img
+            # Parse date for reliable sorting
+            pub_date_raw = entry.get('published', '')
+            pub_date_formatted = pub_date_raw[:16] # Fallback
+            if 'published_parsed' in entry and entry.published_parsed:
+                try:
+                    dt = datetime(*entry.published_parsed[:6])
+                    pub_date_formatted = dt.strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    pass
+
             processed.append({
                 'title': title, 'link': link, 'summary': summary_text, 
                 'img_src': get_high_res_image_url(img), 'source': source, 
-                'id': link, 'published': entry.get('published', '')[:16]
+                'id': link, 'published': pub_date_formatted
             })
         return processed
     except: return []
@@ -343,6 +432,56 @@ def get_search_results(query):
             
     return results
 
+# --- Content Optimization Logic ---
+def is_similar(a, b, threshold=0.6):
+    """Check if two titles are similar using SequenceMatcher."""
+    return difflib.SequenceMatcher(None, a, b).ratio() > threshold
+
+def group_articles(articles):
+    """Group similar articles together."""
+    groups = []
+    # articles must be sorted by date or score before grouping for best results
+    # We assume they are already sorted.
+    
+    processed_indices = set()
+    
+    for i, article in enumerate(articles):
+        if i in processed_indices:
+            continue
+            
+        # Start a new group
+        current_group = [article]
+        processed_indices.add(i)
+        
+        # Look ahead for similar articles
+        for j in range(i + 1, len(articles)):
+            if j in processed_indices:
+                continue
+            
+            other = articles[j]
+            # Check similarity
+            if is_similar(article['title'], other['title']):
+                current_group.append(other)
+                processed_indices.add(j)
+        
+        groups.append(current_group)
+            
+    return groups
+
+def filter_muted_articles(articles, mute_words):
+    """Filter out articles containing mute words."""
+    if not mute_words:
+        return articles
+    
+    filtered = []
+    for item in articles:
+        # Check title and summary
+        text_to_check = (item['title'] + " " + item['summary']).lower()
+        if not any(mw.lower() in text_to_check for mw in mute_words):
+            filtered.append(item)
+            
+    return filtered
+
 
 # --- Design ---
 st.markdown(f"""
@@ -377,21 +516,40 @@ st.markdown(f"""
         border-right: 1px solid {c['border']};
     }}
     
-    .sidebar-logo {{
-        display: flex; align-items: center; gap: 14px;
-        padding-bottom: 24px; margin-bottom: 32px;
-        border-bottom: 1px solid {c['border']};
-    }}
-    .logo-text {{ font-size: 1.6rem; font-weight: 700; letter-spacing: -0.05em; color: {c['text']}; }}
-
-    [data-testid="stSidebar"] section[data-testid="stSidebarNav"] span,
-    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
-    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
-    [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] span,
-    [data-testid="stSidebar"] div {{
+    /* Global Sidebar Text/Headings/Links */
+    [data-testid="stSidebar"] p, 
+    [data-testid="stSidebar"] label, 
+    [data-testid="stSidebar"] h1, 
+    [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] .stMarkdown,
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {{
         color: {c['text']} !important;
         font-weight: 600 !important;
+    }}
+    
+    /* Fix for Logged in / Links in sidebar */
+    [data-testid="stSidebar"] a {{
+        color: {c['sub_text']} !important;
+        text-decoration: underline;
+    }}
+
+    /* Expander / Accordion Styling Fix */
+    [data-testid="stSidebar"] [data-testid="stExpander"] {{
+        border: 1px solid {c['border']} !important;
+        border-radius: 8px !important;
+        background-color: transparent !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary {{
+        background-color: transparent !important;
+        color: {c['text']} !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {{
+        background-color: {c['input_bg']} !important;
+    }}
+    /* SVG icon in expander */
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary svg {{
+        fill: {c['text']} !important;
     }}
 
     div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {{
@@ -399,10 +557,18 @@ st.markdown(f"""
         border: 1px solid {c['border']} !important;
         border-radius: 8px !important;
     }}
-    div[data-baseweb="select"] span, div[data-baseweb="input"] input,
-    div[data-baseweb="select"] div[aria-selected="true"] {{
+    /* Ensure visible text color in selectboxes and inputs */
+    div[data-baseweb="select"] [data-testid="stMarkdownContainer"] p,
+    div[data-baseweb="select"] span,
+    div[data-baseweb="select"] div,
+    div[data-baseweb="input"] input {{
         color: {c['text']} !important;
         -webkit-text-fill-color: {c['text']} !important;
+    }}
+    /* Placeholder contrast */
+    ::placeholder {{
+        color: {c['sub_text']} !important;
+        opacity: 0.8 !important;
     }}
 
     .news-item {{
@@ -447,7 +613,10 @@ st.markdown(f"""
         padding: 8px 16px !important;
         font-size: 0.9rem !important;
     }}
-    .stButton > button:hover {{ background-color: {c['accent']} !important; color: {c['bg']} !important; }}
+    .stButton > button:hover, .stButton > button:hover p {{ 
+        background-color: {c['accent']} !important; 
+        color: {c['bg']} !important; 
+    }}
 
     .stTabs [data-baseweb="tab-list"] {{ gap: 40px; border-bottom: 1px solid {c['border']}; }}
     .stTabs [data-baseweb="tab"] {{ height: 60px; font-size: 1.2rem; color: {c['sub_text']}; font-weight: 700; }}
@@ -466,15 +635,203 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
+# --- Login / Main Logic Switch ---
+
+if 'guest_mode' not in st.session_state:
+    st.session_state.guest_mode = False
+if 'auth_step' not in st.session_state:
+    st.session_state.auth_step = 'login' # login, 2fa, recovery_code, recovery_pass
+
+# Helper to clear auth state
+def clear_auth_state():
+    st.session_state.auth_step = 'login'
+    st.session_state.temp_email = None
+    st.session_state.temp_secret = None
+
+if not st.session_state.user and not st.session_state.guest_mode:
+    # --- Login/Register/Recovery UI ---
+    st.markdown(f"""
+        <style>
+        .stApp {{ background-color: {c['bg']}; }}
+        h1, h2, h3, label {{ color: {c['text']} !important; }}
+        .stTextInput input {{ background-color: {c['input_bg']} !important; color: {c['text']} !important; }}
+        </style>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown(f"<h1 style='text-align: center;'>🍌 AI News Pro</h1>", unsafe_allow_html=True)
+        
+        # 2FA Verification Screen
+        if st.session_state.auth_step == '2fa':
+            st.markdown("### 2段階認証")
+            st.info(f"認証コードを登録メールアドレスに送信しました。受信トレイを確認してください。")
+            code_input = st.text_input("認証コード", key="2fa_code")
+            if st.button("認証", use_container_width=True, type="primary"):
+                if db.verify_2fa(st.session_state.temp_email, code_input):
+                    st.session_state.user = st.session_state.temp_email
+                    # Create/Update persistent session
+                    db.update_session(st.session_state.user)
+                    load_user_session()
+                    clear_auth_state()
+                    st.rerun()
+                else:
+                    st.error("コードが間違っています")
+            if st.button("戻る", use_container_width=True):
+                clear_auth_state()
+                st.rerun()
+
+        # Recovery Code Screen
+        elif st.session_state.auth_step == 'recovery_code':
+            st.markdown("### パスワード再設定")
+            st.info("認証コードをメールに送信しました。受信トレイを確認してください。")
+            rec_code = st.text_input("認証コード", key="rec_code_input")
+            if st.button("次へ", use_container_width=True, type="primary"):
+                if db.verify_recovery_code(st.session_state.temp_email, rec_code):
+                    st.session_state.auth_step = 'recovery_pass'
+                    st.rerun()
+                else:
+                    st.error("コードが間違っています")
+            if st.button("戻る"):
+                clear_auth_state()
+                st.rerun()
+
+        # Recovery New Password Screen
+        elif st.session_state.auth_step == 'recovery_pass':
+            st.markdown("### 新しいパスワード")
+            new_p1 = st.text_input("新しいパスワード", type="password", key="new_p1")
+            new_p2 = st.text_input("確認用", type="password", key="new_p2")
+            if st.button("変更", use_container_width=True, type="primary"):
+                if new_p1 and new_p1 == new_p2:
+                    db.update_password(st.session_state.temp_email, new_p1)
+                    st.success("パスワードを変更しました！ログインしてください。")
+                    clear_auth_state()
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    st.error("パスワードが一致しません")
+
+        # Main Auth Tabs (Login / Register / Forgot)
+        else:
+            tab_login, tab_register, tab_forgot = st.tabs(["ログイン", "新規登録", "パスワード忘れ"])
+            
+            with tab_login:
+                l_mail = st.text_input("メールアドレス", key="l_mail")
+                l_pass = st.text_input("パスワード", type="password", key="l_pass")
+                if st.button("ログイン", use_container_width=True, type="primary"):
+                    secret = db.verify_user(l_mail, l_pass)
+                    if secret:
+                        # Generate and send real code
+                        code = db.set_auth_code(l_mail)
+                        if send_auth_email(l_mail, "【AI News Pro】認証コード", f"あなたの認証コードは {code} です。"):
+                            st.session_state.temp_email = l_mail
+                            st.session_state.temp_secret = secret
+                            st.session_state.auth_step = '2fa'
+                            st.rerun()
+                        else:
+                            st.error("メール送信に失敗しました")
+                    else:
+                        st.error("メールアドレスまたはパスワードが間違っています")
+            
+            with tab_register:
+                r_mail = st.text_input("メールアドレス", key="r_mail")
+                r_pass = st.text_input("パスワード", type="password", key="r_pass")
+                if st.button("アカウント作成", use_container_width=True):
+                    if r_mail and r_pass:
+                        secret = db.create_user(r_mail, r_pass)
+                        if secret:
+                            # Generate and send code
+                            code = db.set_auth_code(r_mail)
+                            if send_auth_email(r_mail, "【AI News Pro】新規登録 認証コード", f"新規登録を完了するための認証コードは {code} です。"):
+                                st.session_state.temp_email = r_mail
+                                st.session_state.temp_secret = secret
+                                st.session_state.auth_step = '2fa'
+                                st.success("認証コードを送信しました！")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error("メール送信に失敗しました")
+                        else:
+                            st.error("そのメールアドレスは既に使用されています")
+                    else:
+                        st.warning("全ての項目を入力してください")
+
+            with tab_forgot:
+                f_mail = st.text_input("登録メールアドレス", key="f_mail")
+                if st.button("コード送信", use_container_width=True):
+                    if f_mail:
+                        code = db.set_recovery_code(f_mail)
+                        if code:
+                            if send_auth_email(f_mail, "【AI News Pro】パスワード再設定コード", f"パスワード再設定用の認証コードは {code} です。"):
+                                st.session_state.temp_email = f_mail
+                                st.session_state.auth_step = 'recovery_code'
+                                st.rerun()
+                            else:
+                                st.error("メール送信に失敗しました")
+                        else:
+                            st.error("ユーザーが見つかりません")
+            
+            st.divider()
+            if st.button("ログインせずに利用する（ゲストモード）", use_container_width=True):
+                st.session_state.guest_mode = True
+                st.session_state.user = None
+                st.rerun()
+    
+    st.stop() # Stop execution here if not logged in
+
 # --- Sidebar ---
 with st.sidebar:
     st.markdown(f"<h1 style='color: {c['text']}; display: flex; align-items: center; gap: 10px;'><span style='font-size: 1.5em;'>🍌</span> AI News Pro</h1>", unsafe_allow_html=True)
     
+    if st.session_state.user:
+        st.caption(f"Logged in: {st.session_state.user}")
+        if st.button("ログアウト", use_container_width=True):
+            st.session_state.user = None
+            st.session_state.guest_mode = False
+            # Clear persistent session
+            db.clear_session()
+            clear_auth_state()
+            st.rerun()
+    else:
+        st.caption("Guest Mode")
+        st.info("ゲストモードでは設定は保存されません")
+        if st.button("ログイン / 登録", use_container_width=True):
+            st.session_state.guest_mode = False
+            st.rerun()
+        
     st.markdown("### Settings")
     theme_btn = st.radio("テーマ選択", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "Dark" else 1)
     if theme_btn != st.session_state.theme:
         st.session_state.theme = theme_btn
+        # Save theme setting
+        if st.session_state.user:
+            db.save_user_data(st.session_state.user, 'theme', theme_btn)
         st.rerun()
+
+    # Mute Settings
+    with st.expander("ミュート設定"):
+        st.caption("指定した単語を含む記事を非表示にします")
+        def add_mute():
+            new_m = st.session_state.new_mute_input
+            if new_m and new_m not in st.session_state.mute_words:
+                st.session_state.mute_words.append(new_m)
+                st.session_state.new_mute_input = ""
+                if st.session_state.user:
+                    db.save_user_data(st.session_state.user, 'mute_words', st.session_state.mute_words)
+                st.rerun()
+        
+        st.text_input("除外したい単語", key="new_mute_input", on_change=add_mute)
+        
+        if st.session_state.mute_words:
+            st.markdown("---")
+            for i, mw in enumerate(st.session_state.mute_words):
+                c1, c2 = st.columns([3, 1])
+                c1.markdown(f"🚫 {mw}")
+                if c2.button("✕", key=f"del_mute_{i}", use_container_width=True):
+                    st.session_state.mute_words.pop(i)
+                    if st.session_state.user:
+                        db.save_user_data(st.session_state.user, 'mute_words', st.session_state.mute_words)
+                    st.rerun()
 
     # Define news sources
     news_sources = [
@@ -544,26 +901,23 @@ with st.sidebar:
     # Query input removed from here as it moved to global search
     
     st.divider()
-    
-    # Date filter
-    st.session_state.date_filter = st.selectbox(
-        "表示期間", 
-        ["すべて", "今日", "過去3日", "過去1週間"],
-        index=["すべて", "今日", "過去3日", "過去1週間"].index(st.session_state.date_filter)
-    )
-    
-    st.divider()
     st.markdown("### おすすめ設定")
     
     # Keyword management with Enter key support
     def add_keyword():
         new_kw = st.session_state.new_keyword_input
         if new_kw and new_kw not in st.session_state.recommendation_keywords:
-            if len(st.session_state.recommendation_keywords) < 5:
-                st.session_state.recommendation_keywords.append(new_kw)
-                st.session_state.new_keyword_input = ""  # Clear input
-                # Update URL params
-                st.query_params["keywords"] = ",".join(st.session_state.recommendation_keywords)
+                if len(st.session_state.recommendation_keywords) < 5:
+                    st.session_state.recommendation_keywords.append(new_kw)
+                    st.session_state.new_keyword_input = ""  # Clear input
+                    # Save to DB
+                    if st.session_state.user:
+                        db.save_user_data(st.session_state.user, 'keywords', st.session_state.recommendation_keywords)
+                    st.rerun()
+                else:
+                    st.warning("登録できるキーワードは5つまでです")
+        elif new_kw in st.session_state.recommendation_keywords:
+            st.warning("そのキーワードは既に登録されています")
     
     new_keyword = st.text_input(
         "興味のあるキーワードを追加（Enterで追加）", 
@@ -583,8 +937,9 @@ with st.sidebar:
             with col2:
                 if st.button("✕", key=f"remove_kw_{i}", use_container_width=True):
                     st.session_state.recommendation_keywords.pop(i)
-                    # Update URL params
-                    st.query_params["keywords"] = ",".join(st.session_state.recommendation_keywords)
+                    # Save to DB
+                    if st.session_state.user:
+                        db.save_user_data(st.session_state.user, 'keywords', st.session_state.recommendation_keywords)
                     st.rerun()
     
     
@@ -614,35 +969,65 @@ with tab1:
         with st.spinner("取得中..."):
             news_items = fetch_news(source, cat_code, "")
             
-        if news_items:
-            cols = st.columns(3)
-            for i, item in enumerate(news_items):
-                with cols[i % 3]:
-                    st.markdown(f'<div class="news-item">', unsafe_allow_html=True)
-                    ik = f"ic_{item['id']}"
-                    img = item['img_src'] or st.session_state.get(ik)
-                    
-                    st.markdown(f'<div class="news-meta">{item["source"]} • {item["published"]}</div>', unsafe_allow_html=True)
-                    if img: st.markdown(f'<a href="{item["link"]}" target="_blank"><img src="{img}" class="news-thumb"></a>', unsafe_allow_html=True)
-                    st.markdown(f'<a href="{item["link"]}" target="_blank" class="news-title-link"><div class="news-title">{item["title"]}</div></a>', unsafe_allow_html=True)
-                    
-                    if item['summary']:
-                        st.markdown(f'<div class="news-excerpt">{item["summary"]}</div>', unsafe_allow_html=True)
-                    
-                    b1, b2 = st.columns(2)
-                    with b1:
-                        if not img:
-                            if st.button("🖼️ 画像", key=f"img_{i}", use_container_width=True):
-                                st.session_state[ik] = fetch_og_image(item['link'])
-                                st.rerun()
-                    with b2:
-                        if st.button("保存 🔖", key=f"sav_{i}", use_container_width=True):
-                            if not any(b['link'] == item['link'] for b in st.session_state.bookmarks):
-                                st.session_state.bookmarks.append(item)
-                                st.toast("保存しました")
-                    
-                    st.markdown('</div>', unsafe_allow_html=True)
-        else: st.info("ニュースが見つかりませんでした。")
+        if not news_items:
+             st.info("ニュースが見つかりませんでした。")
+        else:
+             # 1. Filter Mute Words
+             filtered_items = filter_muted_articles(news_items, st.session_state.mute_words)
+             
+             if not filtered_items:
+                 st.info("すべての記事がミュートされました。")
+             else:
+                 # 2. Smart Grouping
+                 grouped_items = group_articles(filtered_items)
+                 
+                 st.markdown(f"**表示中: {len(filtered_items)} 件 (グルーピング済)**")
+                 
+                 cols = st.columns(3)
+                 for i, group in enumerate(grouped_items):
+                     # Show the first article as main
+                     main_item = group[0]
+                     related_count = len(group) - 1
+                     
+                     with cols[i % 3]:
+                         st.markdown(f'<div class="news-item">', unsafe_allow_html=True)
+                         ik = f"ic_{main_item['id']}"
+                         img = main_item['img_src'] or st.session_state.get(ik)
+                         
+                         st.markdown(f'<div class="news-meta">{main_item["source"]} • {main_item["published"]}</div>', unsafe_allow_html=True)
+                         if img: st.markdown(f'<a href="{main_item["link"]}" target="_blank"><img src="{img}" class="news-thumb"></a>', unsafe_allow_html=True)
+                         st.markdown(f'<a href="{main_item["link"]}" target="_blank" class="news-title-link"><div class="news-title">{main_item["title"]}</div></a>', unsafe_allow_html=True)
+                         
+                         if main_item['summary']:
+                             st.markdown(f'<div class="news-excerpt">{main_item["summary"]}</div>', unsafe_allow_html=True)
+                         
+                         b1, b2 = st.columns(2)
+                         with b1:
+                              if not img:
+                                 if st.button("🖼️ 画像", key=f"img_{i}", use_container_width=True):
+                                     st.session_state[ik] = fetch_og_image(main_item['link'])
+                                     st.rerun()
+                         with b2:
+                             if st.button("保存 🔖", key=f"sav_{i}", use_container_width=True):
+                                 existing = [b for b in st.session_state.bookmarks if b['link'] == main_item['link']]
+                                 if existing:
+                                     st.session_state.bookmarks = [b for b in st.session_state.bookmarks if b['link'] != main_item['link']]
+                                     st.toast("保存を解除しました")
+                                 else:
+                                     st.session_state.bookmarks.append(main_item)
+                                     st.toast("保存しました")
+                                 # Save Bookmark to DB
+                                 if st.session_state.user:
+                                     db.save_user_data(st.session_state.user, 'bookmarks', st.session_state.bookmarks)
+                                 st.rerun()
+                         
+                         # Show Related Articles if any
+                         if related_count > 0:
+                             with st.expander(f"他 {related_count} 件の関連記事"):
+                                 for rel in group[1:]:
+                                     st.markdown(f"- [{rel['source']}] [{rel['title']}]({rel['link']})")
+                         
+                         st.markdown('</div>', unsafe_allow_html=True)
 
 with tab2:
     if not st.session_state.recommendation_keywords:
@@ -655,6 +1040,15 @@ with tab2:
         
         with st.spinner("全ソースからおすすめ記事を取得中..."):
             scored_items = get_recommended_articles(st.session_state.recommendation_keywords)
+            
+            # Filter Mute Words
+            if scored_items and st.session_state.mute_words:
+                filtered_scored = []
+                for score, item in scored_items:
+                    text_check = (item['title'] + " " + item['summary']).lower()
+                    if not any(mw.lower() in text_check for mw in st.session_state.mute_words):
+                        filtered_scored.append((score, item))
+                scored_items = filtered_scored
         
         if scored_items:
             # Apply sorting
@@ -695,6 +1089,11 @@ with tab2:
                         if not any(b['link'] == item['link'] for b in st.session_state.bookmarks):
                             st.session_state.bookmarks.append(item)
                             st.toast("保存しました")
+                            # Save to DB
+                            if st.session_state.user:
+                                db.save_user_data(st.session_state.user, 'bookmarks', st.session_state.bookmarks)
+                        else:
+                            st.toast("既に保存されています")
                     
                     st.markdown('</div>', unsafe_allow_html=True)
         else:
@@ -741,6 +1140,9 @@ with tab3:
                 
                 if st.button("削除 🗑️", key=f"del_{i}", use_container_width=True):
                     st.session_state.bookmarks.pop(i)
+                    # Save to DB
+                    if st.session_state.user:
+                        db.save_user_data(st.session_state.user, 'bookmarks', st.session_state.bookmarks)
                     st.rerun()
                 
                 st.markdown('</div>', unsafe_allow_html=True)
@@ -750,9 +1152,7 @@ with tab4:
     
     col1, col2 = st.columns([3, 1])
     with col1:
-        # Check date filter state for context
-        filter_label = f" (期間: {st.session_state.date_filter})" if st.session_state.date_filter != "すべて" else ""
-        search_query = st.text_input(f"検索ワードを入力{filter_label}", placeholder="例: 生成AI, 半導体, 選挙", key="global_search_input")
+        search_query = st.text_input("検索ワードを入力", placeholder="例: 生成AI, 半導体, 選挙", key="global_search_input")
     with col2:
         st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
         search_btn = st.button("検索", use_container_width=True, type="primary")
@@ -761,40 +1161,65 @@ with tab4:
         with st.spinner(f"'{search_query}' で全ソースを検索中..."):
             results = get_search_results(search_query)
             
-            # Apply date filter
-            filtered_results = []
-            if st.session_state.date_filter != "すべて":
-                now = datetime.now()
-                for item in results:
-                    try:
-                        pub_date = pd.to_datetime(item['published'], utc=True).replace(tzinfo=None)
-                        days_diff = (now - pub_date).days
-                        if st.session_state.date_filter == "今日" and days_diff < 1:
-                            filtered_results.append(item)
-                        elif st.session_state.date_filter == "過去3日" and days_diff < 3:
-                            filtered_results.append(item)
-                        elif st.session_state.date_filter == "過去1週間" and days_diff < 7:
-                            filtered_results.append(item)
-                    except:
-                        filtered_results.append(item)
-            else:
-                filtered_results = results
+            filtered_results = results
 
-            st.markdown(f"**検索結果: {len(filtered_results)} 件**")
+            # Filter Mute Words
+            search_final = filter_muted_articles(filtered_results, st.session_state.mute_words)
             
-            if not filtered_results:
-                st.info("該当する記事が見つかりませんでした。")
+            st.markdown(f"**検索結果: {len(search_final)} 件**")
+            
+            if not search_final:
+                st.info("該当する記事が見つかりませんでした（またはミュートされました）。")
             else:
+                # Grouping
+                search_grouped = group_articles(search_final)
+                st.caption(f"(グルーピング済)")
+                
                 cols = st.columns(3)
-                for i, item in enumerate(filtered_results):
+                for i, group in enumerate(search_grouped):
+                    main_item = group[0]
+                    related_count = len(group) - 1
+                    
                     with cols[i % 3]:
-                        # Helper to display card logic (reusing similar structure)
                         st.markdown(f'<div class="news-item">', unsafe_allow_html=True)
-                        ik = f"sic_{i}_{item['link']}" # unique key
-                        img = item.get('img_src')
+                        ik = f"sic_{i}_{main_item['link']}" # unique key
+                        img = main_item.get('img_src') or st.session_state.get(ik)
                         
-                        st.markdown(f'<div class="news-meta">{item["source"]} • {item["published"]}</div>', unsafe_allow_html=True)
-                        if img: st.markdown(f'<a href="{item["link"]}" target="_blank"><img src="{img}" class="news-thumb"></a>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="news-meta">{main_item["source"]} • {main_item["published"]}</div>', unsafe_allow_html=True)
+                        if img: st.markdown(f'<a href="{main_item["link"]}" target="_blank"><img src="{img}" class="news-thumb"></a>', unsafe_allow_html=True)
+                        st.markdown(f'<a href="{main_item["link"]}" target="_blank" class="news-title-link"><div class="news-title">{main_item["title"]}</div></a>', unsafe_allow_html=True)
+                        
+                        if main_item['summary']:
+                            st.markdown(f'<div class="news-excerpt">{main_item["summary"]}</div>', unsafe_allow_html=True)
+                        
+                        b1, b2 = st.columns(2)
+                        with b1:
+                            if not img:
+                                if st.button("🖼️ 画像", key=f"s_img_{i}", use_container_width=True):
+                                    st.session_state[ik] = fetch_og_image(main_item['link'])
+                                    st.rerun()
+                        with b2:
+                            if st.button("保存 🔖", key=f"s_sav_{i}", use_container_width=True):
+                                # Save logic
+                                existing = [b for b in st.session_state.bookmarks if b['link'] == main_item['link']]
+                                if existing:
+                                    st.session_state.bookmarks = [b for b in st.session_state.bookmarks if b['link'] != main_item['link']]
+                                    st.toast("保存を解除しました")
+                                else:
+                                    st.session_state.bookmarks.append(main_item)
+                                    st.toast("保存しました")
+                                
+                                if st.session_state.user:
+                                    db.save_user_data(st.session_state.user, 'bookmarks', st.session_state.bookmarks)
+                                st.rerun()
+                        
+                        # Show Related Search Results
+                        if related_count > 0:
+                            with st.expander(f"他 {related_count} 件"):
+                                for rel in group[1:]:
+                                    st.markdown(f"- [{rel['source']}] [{rel['title']}]({rel['link']})")
+
+                        st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown(f'<a href="{item["link"]}" target="_blank" class="news-title-link"><div class="news-title">{item["title"]}</div></a>', unsafe_allow_html=True)
                         
                         if item['summary']:
@@ -804,6 +1229,9 @@ with tab4:
                             if not any(b['link'] == item['link'] for b in st.session_state.bookmarks):
                                 st.session_state.bookmarks.append(item)
                                 st.toast("保存しました")
+                                # Save to DB
+                                if st.session_state.user:
+                                    db.save_user_data(st.session_state.user, 'bookmarks', st.session_state.bookmarks)
                         
                 
                 st.markdown('</div>', unsafe_allow_html=True)
