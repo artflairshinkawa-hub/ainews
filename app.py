@@ -1176,6 +1176,10 @@ with tab2:
         with st.spinner("全ソースからおすすめ記事を取得中..."):
             scored_items = get_recommended_articles(st.session_state.recommendation_keywords)
             
+            # Filter by source if not 総合トップ
+            if source != "⚡ 総合トップ" and scored_items:
+                scored_items = [(score, item) for score, item in scored_items if item['source'] == source]
+            
             # Filter Mute Words
             if scored_items and st.session_state.mute_words:
                 filtered_scored = []
@@ -1235,8 +1239,16 @@ with tab2:
             st.info("キーワードに一致する記事が見つかりませんでした。")
 
 with tab3:
-    if not st.session_state.bookmarks:
-        st.info("保存された記事はありません。")
+    # Filter bookmarks by source if not 総合トップ
+    display_bookmarks = st.session_state.bookmarks
+    if source != "⚡ 総合トップ":
+        display_bookmarks = [b for b in st.session_state.bookmarks if b['source'] == source]
+    
+    if not display_bookmarks:
+        if source == "⚡ 総合トップ":
+            st.info("保存した記事はまだありません。")
+        else:
+            st.info(f"{source} の保存済み記事はありません。")
     else:
         # CSV Export button
         if st.button("📥 CSVでエクスポート", use_container_width=True):
@@ -1246,7 +1258,7 @@ with tab3:
                 'ソース': b['source'],
                 '日付': b['published'],
                 '要約': b['summary']
-            } for b in st.session_state.bookmarks])
+            } for b in display_bookmarks])
             
             csv = df.to_csv(index=False, encoding='utf-8-sig')
             st.download_button(
@@ -1260,7 +1272,7 @@ with tab3:
         st.divider()
         
         cols_b = st.columns(3)
-        for i, item in enumerate(st.session_state.bookmarks):
+        for i, item in enumerate(display_bookmarks):
             with cols_b[i % 3]:
                 st.markdown(f'<div class="news-item">', unsafe_allow_html=True)
                 ik = f"ic_{item['id']}"
@@ -1274,7 +1286,8 @@ with tab3:
                     st.markdown(f'<div class="news-excerpt">{item["summary"]}</div>', unsafe_allow_html=True)
                 
                 if st.button("削除 🗑️", key=f"del_{i}", use_container_width=True):
-                    st.session_state.bookmarks.pop(i)
+                    # Find and remove from original bookmarks list
+                    st.session_state.bookmarks = [b for b in st.session_state.bookmarks if b['link'] != item['link']]
                     # Save to DB
                     if st.session_state.user:
                         db.save_user_data(st.session_state.user, 'bookmarks', st.session_state.bookmarks)
