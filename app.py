@@ -3,11 +3,8 @@ import streamlit.components.v1 as components
 import extra_streamlit_components as stx
 
 # --- Cookie Management (Library-based) ---
-@st.cache_resource
-def get_cookie_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_cookie_manager()
+# Initialize CookieManager directly (cannot be cached as it contains a widget)
+cookie_manager = stx.CookieManager()
 import feedparser
 import time
 import pandas as pd
