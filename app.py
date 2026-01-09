@@ -914,55 +914,6 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# Scroll-to-top button using components.html for proper rendering
-components.html(f"""
-<style>
-#scroll-to-top {{
-    position: fixed;
-    bottom: 30px;
-    left: 30px;
-    width: 50px;
-    height: 50px;
-    background: linear-gradient(135deg, {c['accent']} 0%, {c['text']} 100%);
-    color: {c['bg']};
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    cursor: pointer;
-    opacity: 0;
-    visibility: hidden;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    z-index: 9999;
-}}
-
-#scroll-to-top.visible {{
-    opacity: 1;
-    visibility: visible;
-}}
-
-#scroll-to-top:hover {{
-    transform: translateY(-5px);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-}}
-</style>
-
-<div id="scroll-to-top" onclick="window.parent.scrollTo({{top: 0, behavior: 'smooth'}})">↑</div>
-
-<script>
-window.parent.addEventListener('scroll', function() {{
-    var scrollBtn = document.getElementById('scroll-to-top');
-    if (window.parent.pageYOffset > 300) {{
-        scrollBtn.classList.add('visible');
-    }} else {{
-        scrollBtn.classList.remove('visible');
-    }}
-}});
-</script>
-""", height=0)
-
 # --- Login / Main Logic Switch ---
 
 if 'guest_mode' not in st.session_state:
