@@ -693,8 +693,8 @@ def get_recommended_articles(keywords):
     if is_debug:
         st.write(f"Total articles found: {len(all_articles)}")
     
-    # Return top items
-    return all_articles[:60]
+    # Return ALL items (filtering happens in UI)
+    return all_articles
 
 def get_search_results(query):
     """Search for a keyword across multiple sources."""
@@ -1240,16 +1240,19 @@ with tab2:
                 scored_items.sort(key=lambda x: x[1]['source'])
             # Default is already score order
             
+            # Limit display to top 50 AFTER filtering
+            display_items = scored_items[:50]
+            
             # Bulk image load button
             if st.button("🖼️ 全画像を読み込む", key="rec_load_all_images", use_container_width=True):
-                for score, item in scored_items:
+                for score, item in display_items:
                     ik = f"ic_{item['id']}"
                     if not item['img_src'] and ik not in st.session_state:
                         st.session_state[ik] = fetch_og_image(item['link'])
                 st.rerun()
             
             cols = st.columns(3)
-            for i, (score, item) in enumerate(scored_items):
+            for i, (score, item) in enumerate(display_items):
                 with cols[i % 3]:
                     st.markdown(f'<div class="news-item">', unsafe_allow_html=True)
                     ik = f"ic_{item['id']}"
