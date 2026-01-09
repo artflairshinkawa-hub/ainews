@@ -3,18 +3,40 @@ import streamlit.components.v1 as components
 import extra_streamlit_components as stx
 
 # --- Cookie Management (Library-based) ---
-# Initialize CookieManager directly (cannot be cached as it contains a widget)
-cookie_manager = stx.CookieManager()
+# Initialize CookieManager with a unique key for stability
+cookie_manager = stx.CookieManager(key="cookie_manager_v1")
 
 def set_cookie_js(name, value, days=2):
-    """Set a cookie using CookieManager."""
-    # Use explicit UTC expiration for better cross-timezone support
+    """Set a cookie using both Manager and Raw JS for maximum compatibility."""
+    import datetime
     expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days)
-    cookie_manager.set(name, value, expires_at=expires)
+    
+    # 1. Try CookieManager
+    cookie_manager.set(name, value, expires_at=expires, key=f"set_{name}")
+    
+    # 2. Try Raw JS Fallback (especially for iframes/local mix)
+    # We use a conditional 'Secure' attribute based on whether we are on HTTPS
+    is_https = st.context.headers.get("X-Forwarded-Proto") == "https"
+    secure_attr = "SameSite=None; Secure" if is_https else "SameSite=Lax"
+    
+    max_age = days * 24 * 60 * 60
+    js_code = f"""
+        <script>
+        document.cookie = "{name}={value}; Max-Age={max_age}; Path=/; {secure_attr}";
+        console.log("Cookie {name} set attempt via Raw JS");
+        </script>
+    """
+    components.html(js_code, height=0)
 
 def delete_cookie_js(name):
-    """Delete a cookie using CookieManager."""
-    cookie_manager.delete(name)
+    """Delete a cookie."""
+    cookie_manager.delete(name, key=f"del_{name}")
+    js_code = f"""
+        <script>
+        document.cookie = "{name}=; Max-Age=0; Path=/;";
+        </script>
+    """
+    components.html(js_code, height=0)
 import feedparser
 import time
 import pandas as pd
@@ -291,6 +313,11 @@ with st.sidebar:
         if st.button("🗑️ Reset Persistence (Delete Bad Cookie)", key="debug_clear"):
             delete_cookie_js('session_token')
             st.success("Cookie deletion requested. Please refresh if token persists.")
+            st.rerun()
+
+        if st.button("🧪 Test Cookie (Set Dummy)", key="debug_test"):
+            set_cookie_js('test_cookie', 'hello_world', days=1)
+            st.info("Test cookie requested. Refresh and check Context Cookies below.")
             st.rerun()
 
     st.markdown("### Settings")
