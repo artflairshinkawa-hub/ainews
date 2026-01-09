@@ -793,12 +793,18 @@ st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
     
-    html, body, [data-testid="stAppViewContainer"], [data-testid="stDialog"] {{
+    /* Force exact high-contrast text color for ALL text elements */
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stDialog"], [data-testid="stMarkdownContainer"] p {{
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         background-color: {c['bg']};
         color: {c['text']} !important;
+        -webkit-text-fill-color: {c['text']} !important;
     }}
-    h1, h2, h3, h4 {{
+    h1, h2, h3, h4, [data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3 {{
+        color: {c['text']} !important;
+        -webkit-text-fill-color: {c['text']} !important;
+    }}
+    span, label {{
         color: {c['text']} !important;
     }}
     
