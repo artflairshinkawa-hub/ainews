@@ -555,7 +555,14 @@ def fetch_news(source, category_code, query_text):
 
     if not url: return []
     try:
-        feed = feedparser.parse(url)
+        # Use requests with User-Agent to avoid 403 Forbidden from some sites (Qiita, Zenn, etc.)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        feed = feedparser.parse(response.content)
+        
         processed = []
         for entry in feed.entries:
             title = entry.get('title', 'No Title')
