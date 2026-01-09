@@ -1,34 +1,5 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import extra_streamlit_components as stx
-
-# --- Persistence Management (URL & IP Based) ---
-# We avoid Cookies as they are blocked in many iframe environments
-
-def get_remote_ip():
-    """Get remote user IP from headers."""
-    try:
-        headers = st.context.headers
-        for header in ["X-Forwarded-For", "X-Real-IP", "Remote-Addr"]:
-            val = headers.get(header)
-            if val:
-                return val.split(",")[0].strip()
-        return "0.0.0.0"
-    except:
-        return "0.0.0.0"
-
-def logout():
-    # Remove from DB if token exists in URL or state
-    token = st.query_params.get('s')
-    if token:
-        db.delete_persistent_session(token)
-    
-    st.session_state.user = None
-    st.session_state.guest_mode = False
-    st.query_params.clear() # Clear URL params
-    clear_auth_flow()
-    reset_to_defaults()
-    st.rerun()
 import feedparser
 import time
 import pandas as pd
@@ -46,10 +17,10 @@ import random
 # Database module
 import database as db
 
+# --- Persistence & Auth Helpers ---
 def get_remote_ip():
     """Get remote user IP from headers."""
     try:
-        # Check various headers for IP
         headers = st.context.headers
         for header in ["X-Forwarded-For", "X-Real-IP", "Remote-Addr"]:
             val = headers.get(header)
@@ -58,6 +29,30 @@ def get_remote_ip():
         return "0.0.0.0"
     except:
         return "0.0.0.0"
+
+def reset_to_defaults():
+    st.session_state.theme = 'Dark'
+    st.session_state.bookmarks = []
+    st.session_state.recommendation_keywords = []
+    st.session_state.mute_words = []
+
+def clear_auth_flow():
+    st.session_state.auth_step = 'login'
+    st.session_state.temp_email = None
+    st.session_state.temp_secret = None
+
+def logout():
+    # Remove from DB if token exists in URL or state
+    token = st.query_params.get('s')
+    if token:
+        db.delete_persistent_session(token)
+    
+    st.session_state.user = None
+    st.session_state.guest_mode = False
+    st.query_params.clear() # Clear URL params
+    clear_auth_flow()
+    reset_to_defaults()
+    st.rerun()
 
 # Initialize DB
 db.init_db()
@@ -92,10 +87,6 @@ ALL_SOURCES = [
     "Google News", "Gigazine", "ITmedia", "CNET Japan", 
     "TechCrunch Japan", "Qiita", "Zenn", "ナタリー"
 ]
-
-# --- Session State & URL Persistence ---
-if 'user' not in st.session_state:
-    st.session_state.user = None
 
 # Logic to load user data if logged in
 def load_user_session():
@@ -905,32 +896,6 @@ if 'guest_mode' not in st.session_state:
 if 'auth_step' not in st.session_state:
     st.session_state.auth_step = 'login' # login, 2fa, recovery_code, recovery_pass
 
-# Helper to reset all settings to defaults
-def reset_to_defaults():
-    st.session_state.theme = 'Dark'
-    st.session_state.bookmarks = []
-    st.session_state.recommendation_keywords = []
-    st.session_state.mute_words = []
-
-# Helper to clear temporary auth flow state
-def clear_auth_flow():
-    st.session_state.auth_step = 'login'
-    st.session_state.temp_email = None
-    st.session_state.temp_secret = None
-
-# Full logout helper
-def logout():
-    # Remove from DB if token exists
-    token = st.context.cookies.get('session_token')
-    if token:
-        db.delete_persistent_session(token)
-    
-    st.session_state.user = None
-    st.session_state.guest_mode = False
-    clear_auth_flow()
-    reset_to_defaults()
-    # Clear browser cookie
-    delete_cookie_js('session_token')
 
 if not st.session_state.user and not st.session_state.guest_mode:
     # --- Login/Register/Recovery UI ---
