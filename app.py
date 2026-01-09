@@ -1,5 +1,6 @@
 import streamlit as st
 import streamlit.components.v1 as components
+import extra_streamlit_components as stx
 import feedparser
 import time
 import pandas as pd
@@ -16,6 +17,9 @@ from urllib.parse import quote, urlparse
 import random
 # Database module
 import database as db
+
+# Initialize CookieManager early
+cookie_manager = stx.CookieManager()
 
 # --- Persistence & Auth Helpers ---
 def get_remote_ip():
@@ -42,17 +46,25 @@ def clear_auth_flow():
     st.session_state.temp_secret = None
 
 def logout():
-    # Remove from DB if token exists in URL or state
-    token = st.query_params.get('s')
+    # Remove from DB if token exists in URL or cookie
+    token = st.query_params.get('s') or cookie_manager.get('session_token')
     if token:
         db.delete_persistent_session(token)
     
     st.session_state.user = None
     st.session_state.guest_mode = False
     st.query_params.clear() # Clear URL params
+    cookie_manager.delete('session_token') # Clear cookie
     clear_auth_flow()
     reset_to_defaults()
     st.rerun()
+
+def set_persistent_login(email, ip):
+    """Create persistent session and set both URL and cookie."""
+    token = db.create_persistent_session(email, ip)
+    st.query_params['s'] = token # URL for bookmarking
+    cookie_manager.set('session_token', token, expires_at=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30))
+    return token
 
 # Initialize DB
 db.init_db()
@@ -113,10 +125,14 @@ if 'mute_words' not in st.session_state:
 if 'user' not in st.session_state:
     st.session_state.user = None
 
-# Load persistent session from URL or IP
+# Load persistent session from URL or Cookie
 if st.session_state.user is None:
     # 1. Try URL Query Parameter (Bookmark Link)
     token = st.query_params.get('s')
+    # 2. Try Cookie (Standard persistence)
+    if not token:
+        token = cookie_manager.get('session_token')
+    
     if token:
         ip = get_remote_ip()
         result = db.verify_persistent_session(token, ip)
@@ -125,8 +141,9 @@ if st.session_state.user is None:
             load_user_session()
             # Success!
         else:
-            # Token invalid/expired, clear it from URL
+            # Token invalid/expired, clear it
             st.query_params.clear()
+            cookie_manager.delete('session_token')
 
 # Call load_user_session for normal session state sync
 load_user_session()
@@ -262,38 +279,14 @@ with st.sidebar:
             st.session_state.guest_mode = False
             st.rerun()
 
-        # No tokens in URL, check IP for "Quick Resume"
-        else:
-            ip = get_remote_ip()
-            resume_data = db.get_latest_session_by_ip(ip)
-            if resume_data:
-                email, token = resume_data
-                st.info(f"💡 前回のログイン（{email}）が見つかりました。")
-                if st.button(f"「{email}」として再開する", use_container_width=True):
-                    st.session_state.user = email
-                    st.query_params['s'] = token # Add token to URL for next time
-                    load_user_session()
-                    st.rerun()
-
     # --- Bookmark Info (Visible when logged in) ---
     if st.session_state.user:
         current_token = st.query_params.get('s')
         if current_token:
             with st.expander("📌 継続ログインの設定", expanded=False):
                 st.write("このページを**ブックマーク（お気に入り登録）**しておくと、次回から自動ログインされます。")
-                st.code(f"https://share.streamlit.io/artflairshinkawa-hub/ainews/main/app.py?s={current_token}")
-            
-        if st.button("🗑️ Reset Persistence (Delete Bad Cookie)", key="debug_clear"):
-            delete_cookie_js('session_token')
-            st.success("Cookie deletion requested. Please refresh if token persists.")
-            st.rerun()
+                st.code(f"https://ainews-kdzbuhnlquqbapw9wj9yxh.streamlit.app/?s={current_token}")
 
-        if st.button("🧪 Test Cookie (Set Multi-Strategy)", key="debug_test"):
-            set_cookie_js('debug_test', 'v1', days=1)
-            st.info("Set 3 cookies: debug_test, debug_test_v1_lax, debug_test_v1_simple. Please refresh.")
-            st.rerun()
-
-    st.warning("⚠️ **Cookieが保存されない場合:**\n\nブラウザの設定で「サードパーティのCookieをブロックする」が有効になっている可能性があります。Streamlit Cloudはiframe内で動作するため、この設定を解除するか、ログインURLバーにある「目のアイコン」をクリックして許可してください。")
 
     st.markdown("### Settings")
     theme_btn = st.radio("テーマ選択", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "Dark" else 1)
@@ -920,10 +913,9 @@ if not st.session_state.user and not st.session_state.guest_mode:
                 if db.verify_2fa(st.session_state.temp_email, code_input):
                     email = st.session_state.temp_email
                     st.session_state.user = email
-                    # Create persistent session
+                    # Create persistent session with both URL and Cookie
                     ip = get_remote_ip()
-                    token = db.create_persistent_session(email, ip)
-                    st.query_params['s'] = token # Put token in URL
+                    set_persistent_login(email, ip)
                     
                     load_user_session()
                     clear_auth_flow()
