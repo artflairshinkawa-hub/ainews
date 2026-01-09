@@ -352,6 +352,11 @@ with st.sidebar:
         # Hide Read Filter
         hide_read = st.checkbox("既読を非表示", value=False, key="hide_read_toggle")
 
+        st.divider()
+        st.caption(f"ログイン: {st.session_state.user if st.session_state.user else 'Guest'}")
+        st.caption(f"既読記事数: {len(st.session_state.read_articles)}")
+
+
     # Mute Settings
     with st.expander("ミュート設定"):
         st.caption("指定した単語を含む記事を非表示にします")
