@@ -824,33 +824,42 @@ st.markdown(f"""
     section[data-testid="stSidebar"] button {{
         color: {c['text']} !important;
     }}
-    /* Refined Sidebar Toggle Visibility - v5 (Cross-browser compatible) */
+    /* Unified Glassmorphism Sidebar Toggle - v6 (Final) */
     button[data-testid="stSidebarCollapse"],
     button[aria-label="Expand sidebar"],
     button[aria-label="Collapse sidebar"],
-    [data-testid="collapsedControl"] button {{
-        background-color: transparent !important;
-        border: none !important;
+    [data-testid="collapsedControl"] button,
+    section[data-testid="stSidebar"] button[kind="secondary"] {{
+        background-color: rgba(128, 128, 128, 0.15) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+        border: 1px solid rgba(128, 128, 128, 0.2) !important;
         color: {c['text']} !important;
+        border-radius: 50% !important;
+        width: 40px !important;
+        height: 40px !important;
+        padding: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
         transition: transform 0.2s ease, background-color 0.2s ease !important;
+        z-index: 100000 !important;
     }}
     button[data-testid="stSidebarCollapse"]:hover,
     button[aria-label="Expand sidebar"]:hover,
     button[aria-label="Collapse sidebar"]:hover,
     [data-testid="collapsedControl"] button:hover {{
-        background-color: {c['border']}22 !important;
-        transform: scale(1.1);
+        background-color: rgba(128, 128, 128, 0.3) !important;
+        transform: scale(1.05);
     }}
     button[data-testid="stSidebarCollapse"] svg,
     button[aria-label="Expand sidebar"] svg,
     button[aria-label="Collapse sidebar"] svg,
-    [data-testid="collapsedControl"] button svg {{
+    [data-testid="collapsedControl"] button svg,
+    section[data-testid="stSidebar"] button[kind="secondary"] svg {{
         fill: {c['text']} !important;
-        stroke: {c['text']} !important;
-        stroke-width: 0.5px;
-        filter: drop-shadow(0px 0px 2px {c['bg']}); /* Stronger separation for visibility */
-        width: 22px !important;
-        height: 22px !important;
+        width: 20px !important;
+        height: 20px !important;
     }}
     header[data-testid="stHeader"] {{ background-color: transparent !important; }}
     
