@@ -83,11 +83,11 @@ if st.session_state.user is None:
         
     if token:
         ip = get_remote_ip()
-        valid_user = db.verify_persistent_session(token, ip)
-        if valid_user:
-            st.session_state.user = valid_user
+        result = db.verify_persistent_session(token, ip)
+        if "@" in str(result): # Check if result is an email
+            st.session_state.user = result
             load_user_session()
-            st.rerun() # Rerun to update entire UI to logged-in state
+            st.rerun() 
         else:
             # Optional: Clear invalid cookie if it exists but failed verification
             # This prevents constant DB checks for outdated tokens

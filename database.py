@@ -188,8 +188,8 @@ def create_persistent_session(email, ip_address):
     return token
 
 def verify_persistent_session(token, ip_address):
-    """Check if token is valid, not expired, and IP matches. Returns email if OK, else None."""
-    if not token: return None
+    """Check if token is valid, not expired, and IP matches. Returns email if OK, else reason string."""
+    if not token: return "NO_TOKEN_GIVEN"
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT email, ip_address, expires_at FROM persistent_sessions WHERE token = ?", (token,))
@@ -197,19 +197,27 @@ def verify_persistent_session(token, ip_address):
     
     if row:
         email, stored_ip, expires_at = row
-        if time.time() < expires_at and stored_ip == ip_address:
-            # Update activity
-            new_expires = time.time() + SESSION_TIMEOUT
-            c.execute("UPDATE persistent_sessions SET expires_at = ? WHERE token = ?", (new_expires, token))
-            conn.commit()
-            conn.close()
-            return email
-        else:
-            # Expired or IP Mismatch, clean up
+        # Check Expiry
+        if time.time() > expires_at:
             c.execute("DELETE FROM persistent_sessions WHERE token = ?",(token,))
             conn.commit()
+            conn.close()
+            return "EXPIRED"
+            
+        # Check IP (Strict match for security)
+        if stored_ip and stored_ip != ip_address:
+            conn.close()
+            return f"IP_MISMATCH:stored={stored_ip}"
+            
+        # Success! Update activity
+        new_expires = time.time() + SESSION_TIMEOUT
+        c.execute("UPDATE persistent_sessions SET expires_at = ? WHERE token = ?", (new_expires, token))
+        conn.commit()
+        conn.close()
+        return email
+        
     conn.close()
-    return None
+    return "TOKEN_NOT_FOUND"
 
 def delete_persistent_session(token):
     """Remove a session token on logout."""
