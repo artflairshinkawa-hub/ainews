@@ -1,6 +1,5 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import extra_streamlit_components as stx
 import feedparser
 import time
 import pandas as pd
@@ -17,9 +16,6 @@ from urllib.parse import quote, urlparse
 import random
 # Database module
 import database as db
-
-# Initialize CookieManager early
-cookie_manager = stx.CookieManager()
 
 # --- Persistence & Auth Helpers ---
 def get_remote_ip():
@@ -46,24 +42,22 @@ def clear_auth_flow():
     st.session_state.temp_secret = None
 
 def logout():
-    # Remove from DB if token exists in URL or cookie
-    token = st.query_params.get('s') or cookie_manager.get('session_token')
+    # Remove from DB if token exists in URL
+    token = st.query_params.get('s')
     if token:
         db.delete_persistent_session(token)
     
     st.session_state.user = None
     st.session_state.guest_mode = False
     st.query_params.clear() # Clear URL params
-    cookie_manager.delete('session_token') # Clear cookie
     clear_auth_flow()
     reset_to_defaults()
     st.rerun()
 
 def set_persistent_login(email, ip):
-    """Create persistent session and set both URL and cookie."""
+    """Create persistent session and set URL token."""
     token = db.create_persistent_session(email, ip)
     st.query_params['s'] = token # URL for bookmarking
-    cookie_manager.set('session_token', token, expires_at=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30))
     return token
 
 # Initialize DB
@@ -125,25 +119,18 @@ if 'mute_words' not in st.session_state:
 if 'user' not in st.session_state:
     st.session_state.user = None
 
-# Load persistent session from URL or Cookie
+# Load persistent session from URL only
 if st.session_state.user is None:
-    # 1. Try URL Query Parameter (Bookmark Link)
     token = st.query_params.get('s')
-    # 2. Try Cookie (Standard persistence)
-    if not token:
-        token = cookie_manager.get('session_token')
-    
     if token:
         ip = get_remote_ip()
         result = db.verify_persistent_session(token, ip)
         if "@" in str(result):
             st.session_state.user = result
             load_user_session()
-            # Success!
         else:
             # Token invalid/expired, clear it
             st.query_params.clear()
-            cookie_manager.delete('session_token')
 
 # Call load_user_session for normal session state sync
 load_user_session()
