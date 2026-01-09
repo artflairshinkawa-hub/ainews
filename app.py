@@ -14,6 +14,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from urllib.parse import quote, urlparse
 import random
+import concurrent.futures
 # Database module
 import database as db
 
@@ -436,6 +437,7 @@ def fetch_news(source, category_code, query_text):
     is_debug = st.session_state.get('debug_mode', False)
     
     # --- Global Top Aggregation Logic ---
+    # --- Global Top Aggregation Logic ---
     if source == "⚡ 総合トップ":
         # Aggregate from EVERY available source with BALANCED sampling
         source_configs = {
@@ -455,20 +457,26 @@ def fetch_news(source, category_code, query_text):
         
         all_items = []
         seen_links = set()
-        
-        # Take only TOP 5 articles from each source for balance
         ARTICLES_PER_SOURCE = 5
         
-        for src, cat in source_configs.items():
-            try:
-                items = fetch_news(src, cat, "")
-                # Take only first N items from each source
-                for item in items[:ARTICLES_PER_SOURCE]:
-                    if item['link'] not in seen_links:
-                        all_items.append(item)
-                        seen_links.add(item['link'])
-            except:
-                continue
+        # Parallel Fetching
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_source = {
+                executor.submit(fetch_news, src, cat, ""): src 
+                for src, cat in source_configs.items()
+            }
+            
+            for future in concurrent.futures.as_completed(future_to_source):
+                try:
+                    items = future.result()
+                    # Take only first N items from each source
+                    for item in items[:ARTICLES_PER_SOURCE]:
+                        if item['link'] not in seen_links:
+                            all_items.append(item)
+                            seen_links.add(item['link'])
+                except Exception as e:
+                    if is_debug: print(f"Error fetching source in Global Top: {e}")
+                    continue
         
         # Sort by published date (newest first)
         all_items.sort(key=lambda x: x['published'], reverse=True)
@@ -649,42 +657,34 @@ def get_recommended_articles(keywords):
         "Gigazine", "ITmedia", "CNET Japan", "TechCrunch Japan", "ナタリー"
     ]
     
-    for i, kw in enumerate(keywords):
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = []
+        
         # 1. Search Driven Sources (High Precision)
-        for source in search_driven_sources:
+        for kw in keywords:
+            for source in search_driven_sources:
+                futures.append(executor.submit(fetch_news, source, "SEARCH", kw))
+
+        # 2. Feed Driven Sources (Filter recent items)
+        # For feeds, we just fetch once per source, then filter by all keywords locally
+        for source in feed_driven_sources:
+            cat_code = "HEADLINES"
+            if source == "ITmedia": cat_code = "ALL"
+            elif source == "ナタリー": cat_code = "MUSIC"
+            futures.append(executor.submit(fetch_news, source, cat_code, ""))
+            
+        for future in concurrent.futures.as_completed(futures):
             try:
-                items = fetch_news(source, "SEARCH", kw)
+                items = future.result()
                 for item in items:
                     if item['link'] not in seen_links:
-                        # Score is usually high for these as they are search results
+                        # Score calculation is fast, do it here
                         score = calculate_article_score(item, keywords)
                         if score > 0:
                             all_articles.append((score, item))
                             seen_links.add(item['link'])
             except Exception as e:
-                # Debug: Show error to identify why it's failing
-                print(f"Error fetching {source}: {e}")
-                continue
-
-        # 2. Feed Driven Sources (Filter recent items)
-        for source in feed_driven_sources:
-            try:
-                cat_code = "HEADLINES"
-                if source == "ITmedia": cat_code = "ALL"
-                elif source == "ナタリー": cat_code = "MUSIC"
-                
-                # Fetch simple feed without query
-                items = fetch_news(source, cat_code, "") 
-                
-                for item in items:
-                    if item['link'] not in seen_links:
-                        score = calculate_article_score(item, keywords)
-                        if score > 0: # Only include matches
-                            all_articles.append((score, item))
-                            seen_links.add(item['link'])
-            except Exception as e:
-                if is_debug: st.error(f"Error fetching feed {source}: {e}")
-                print(f"Error fetching feed {source}: {e}")
+                if is_debug: print(f"Error in recommendation fetch: {e}")
                 continue
                 
     # Sort by score (descending)
