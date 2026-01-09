@@ -615,8 +615,8 @@ def calculate_article_score(article, keywords):
 
 def get_recommended_articles(keywords):
     """
-    Fetch articles by actively searching for each keyword across all sources.
-    This ensures specific topics (e.g., 'Frieren', 'AI') are found even if not in headlines.
+    Fetch articles by actively searching for each keyword in ALL available sources.
+    This ensures maximum recall even if it takes a bit longer.
     """
     if not keywords:
         return []
@@ -624,40 +624,55 @@ def get_recommended_articles(keywords):
     all_articles = []
     seen_links = set()
     
-    # Search across ALL available sources
+    # Active search for each keyword across ALL sources
+    # Note: Some sources use 'SEARCH' category to trigger search mode
     search_targets = [
-        "Bing News", "Google News", "Yahoo! ニュース", 
-        "ライブドアニュース", "NHK ニュース", "Gigazine",
-        "ITmedia", "CNET Japan", "TechCrunch Japan",
-        "Qiita", "Zenn", "ナタリー"
+        "Bing News", "Yahoo! ニュース", "ライブドアニュース", "NHK ニュース",
+        "Google News", "Gigazine", "ITmedia", "CNET Japan",
+        "TechCrunch Japan", "Qiita", "Zenn", "ナタリー"
     ]
     
-    progress_text = st.empty()
+    # Default category map for sources that don't support SEARCH query directly via param
+    # For these, we fetch HEADLINES/standard feed and filter client-side if needed,
+    # but fetch_news logic mostly handles "SEARCH" where applicable.
     
     for i, kw in enumerate(keywords):
-        progress_text.text(f"キーワード「{kw}」を検索中... ({i+1}/{len(keywords)})")
-        
         for source in search_targets:
             try:
-                # Use cached fetch with SEARCH category
-                items = fetch_news(source, "SEARCH", kw)
+                # Use cached fetch
+                # Note: For sources that don't support "SEARCH" category code in fetch_news,
+                # we might get an empty list or need to use a different category.
+                # Adjusting to use "SEARCH" where supported, or "HEADLINES" for scraping based?
+                # Actually, fetch_news doesn't handle "SEARCH" for all.
+                # Let's use a smarter category selection.
+                
+                cat_code = "SEARCH"
+                # Some sources might not support SEARCH, mapping fallback:
+                if source in ["NHK ニュース", "ライブドアニュース", "Gigazine", "CNET Japan", "TechCrunch Japan", "ナタリー", "ITmedia"]:
+                     # These don't have a search URL implemented in fetch_news, so we fetch standard feeds
+                     # and let the score calculator filter by keyword relevance.
+                     if source == "ITmedia": cat_code = "ALL"
+                     elif source == "ナタリー": cat_code = "MUSIC"
+                     else: cat_code = "HEADLINES"
+                
+                items = fetch_news(source, cat_code, kw)
+                
                 for item in items:
                     if item['link'] not in seen_links:
                         # Calculate score immediately
                         score = calculate_article_score(item, keywords)
+                        # Only include if it actually matches keywords (score > 0)
                         if score > 0:
                             all_articles.append((score, item))
                             seen_links.add(item['link'])
             except Exception:
                 continue
-    
-    progress_text.empty()
                 
     # Sort by score (descending)
     all_articles.sort(reverse=True, key=lambda x: x[0])
     
     # Return top items
-    return all_articles[:50]
+    return all_articles[:60]
 
 def get_search_results(query):
     """Search for a keyword across multiple sources."""
