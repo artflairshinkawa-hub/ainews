@@ -1243,6 +1243,8 @@ with tab2:
             # Limit display to top 50 AFTER filtering
             display_items = scored_items[:50]
             
+            st.caption(f"全 {len(scored_items)} 件中 {len(display_items)} 件を表示しています")
+
             # Bulk image load button
             if st.button("🖼️ 全画像を読み込む", key="rec_load_all_images", use_container_width=True):
                 for score, item in display_items:
