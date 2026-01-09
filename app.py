@@ -97,22 +97,6 @@ ALL_SOURCES = [
 if 'user' not in st.session_state:
     st.session_state.user = None
 
-# Load persistent session from URL or IP
-if st.session_state.user is None:
-    # 1. Try URL Query Parameter (Bookmark Link)
-    token = st.query_params.get('s')
-    if token:
-        ip = get_remote_ip()
-        result = db.verify_persistent_session(token, ip)
-        if "@" in str(result):
-            st.session_state.user = result
-            load_user_session()
-            # Success!
-        else:
-            # Token invalid/expired, clear it from URL
-            st.query_params.clear()
-
-
 # Logic to load user data if logged in
 def load_user_session():
     if st.session_state.user:
@@ -134,7 +118,26 @@ if 'date_filter' not in st.session_state:
 if 'mute_words' not in st.session_state:
     st.session_state.mute_words = []
 
-# Call load_user_session after initial setup
+# --- Session State & URL Persistence ---
+if 'user' not in st.session_state:
+    st.session_state.user = None
+
+# Load persistent session from URL or IP
+if st.session_state.user is None:
+    # 1. Try URL Query Parameter (Bookmark Link)
+    token = st.query_params.get('s')
+    if token:
+        ip = get_remote_ip()
+        result = db.verify_persistent_session(token, ip)
+        if "@" in str(result):
+            st.session_state.user = result
+            load_user_session()
+            # Success!
+        else:
+            # Token invalid/expired, clear it from URL
+            st.query_params.clear()
+
+# Call load_user_session for normal session state sync
 load_user_session()
 
 # --- Theme Configuration ---
