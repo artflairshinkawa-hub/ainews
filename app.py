@@ -980,30 +980,6 @@ if not st.session_state.user and not st.session_state.guest_mode:
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown(f"<h1 style='text-align: center;'>🍌 AI News Pro</h1>", unsafe_allow_html=True)
-        
-        # 2FA Verification Screen
-        if st.session_state.auth_step == '2fa':
-            st.markdown("### 2段階認証")
-            st.info(f"認証コードを登録メールアドレスに送信しました。受信トレイを確認してください。")
-            code_input = st.text_input("認証コード", key="2fa_code")
-            if st.button("認証", use_container_width=True, type="primary"):
-                if db.verify_2fa(st.session_state.temp_email, code_input):
-                    email = st.session_state.temp_email
-                    st.session_state.user = email
-                    # Create persistent session with both URL and Cookie
-                    ip = get_remote_ip()
-                    set_persistent_login(email, ip)
-                    
-                    load_user_session()
-                    clear_auth_flow()
-                    st.success("ログイン成功！")
-                    st.rerun()
-                else:
-                    st.error("コードが間違っています")
-            if st.button("戻る", use_container_width=True):
-                clear_auth_flow()
-                st.rerun()
 
         st.markdown(f"<h1 style='text-align: center;'>🍌 AI News Pro</h1>", unsafe_allow_html=True)
         
