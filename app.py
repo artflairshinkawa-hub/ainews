@@ -875,8 +875,9 @@ st.markdown(f"""
     .news-title-link:hover {{ opacity: 0.7; }}
     
     .news-title {{
-        font-size: 1.15rem; font-weight: 700; color: {c['text']} !important; text-decoration: none; margin-bottom: 8px; line-height: 1.4;
+        font-size: 1.35rem; font-weight: 700; line-height: 1.4; margin-bottom: 12px; color: {c['text']};
         display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+        height: 3.8rem; /* Ensure consistent height for 2 lines */
     }}
     
     .news-excerpt {{
