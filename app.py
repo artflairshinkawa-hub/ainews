@@ -58,7 +58,8 @@ if 'user' not in st.session_state:
     cookies = st.context.cookies
     token = cookies.get('session_token')
     if token:
-        valid_user = db.verify_persistent_session(token)
+        ip = get_remote_ip()
+        valid_user = db.verify_persistent_session(token, ip)
         if valid_user:
             st.session_state.user = valid_user
             load_user_session()
@@ -193,10 +194,10 @@ def send_auth_email(target_email, subject, body):
 def set_cookie_js(name, value, days=2):
     """Set a cookie via JS injection."""
     expires = days * 24 * 60 * 60
-    # Use SameSite=None; Secure for better compatibility in iframes (Streamlit Cloud)
+    # Simple cookie for better compatibility (Lax is default)
     js_code = f"""
         <script>
-        document.cookie = "{name}={value}; Max-Age={expires}; Path=/; SameSite=None; Secure";
+        document.cookie = "{name}={value}; Max-Age={expires}; Path=/;";
         </script>
     """
     components.html(js_code, height=0)
@@ -205,10 +206,21 @@ def delete_cookie_js(name):
     """Delete a cookie via JS injection."""
     js_code = f"""
         <script>
-        document.cookie = "{name}=; Max-Age=0; Path=/; SameSite=None; Secure";
+        document.cookie = "{name}=; Max-Age=0; Path=/;";
         </script>
     """
     components.html(js_code, height=0)
+
+def get_remote_ip():
+    """Get remote user IP from headers."""
+    try:
+        # X-Forwarded-For is common for Cloud/Proxies
+        xff = st.context.headers.get("X-Forwarded-For")
+        if xff:
+            return xff.split(",")[0]
+        return "0.0.0.0"
+    except:
+        return "0.0.0.0"
 
 # --- Sidebar (Moved up for visibility during login) ---
 with st.sidebar:
@@ -226,11 +238,6 @@ with st.sidebar:
             st.session_state.guest_mode = False
             st.rerun()
 
-    # --- Debug: Show Cookies ---
-    with st.expander("Debug: Cookies", expanded=True):
-        st.write("Raw Cookies:", st.context.cookies)
-        st.write("Token Found:", st.context.cookies.get('session_token'))
-        
     st.markdown("### Settings")
     theme_btn = st.radio("テーマ選択", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "Dark" else 1)
     if theme_btn != st.session_state.theme:
@@ -751,7 +758,8 @@ if not st.session_state.user and not st.session_state.guest_mode:
                     email = st.session_state.temp_email
                     st.session_state.user = email
                     # Create persistent session
-                    token = db.create_persistent_session(email)
+                    ip = get_remote_ip()
+                    token = db.create_persistent_session(email, ip)
                     set_cookie_js('session_token', token)
                     
                     load_user_session() # Load settings for the new user
