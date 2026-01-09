@@ -652,7 +652,10 @@ def get_recommended_articles(keywords):
                         if score > 0:
                             all_articles.append((score, item))
                             seen_links.add(item['link'])
-            except: continue
+            except Exception as e:
+                # Debug: Show error to identify why it's failing
+                print(f"Error fetching {source}: {e}")
+                continue
 
         # 2. Feed Driven Sources (Filter recent items)
         for source in feed_driven_sources:
@@ -670,7 +673,9 @@ def get_recommended_articles(keywords):
                         if score > 0: # Only include matches
                             all_articles.append((score, item))
                             seen_links.add(item['link'])
-            except: continue
+            except Exception as e:
+                print(f"Error fetching feed {source}: {e}")
+                continue
                 
     # Sort by score (descending)
     all_articles.sort(reverse=True, key=lambda x: x[0])
