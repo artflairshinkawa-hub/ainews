@@ -1336,9 +1336,11 @@ with tab2:
                 read_class = "read" if is_read else ""
                 
                 # Construct tracking URL (Current App + ?read=TARGET)
-                # We use a trick: relative path "./?read=..." but Streamlit routing implies we need base url
-                # Actually, standard "?read=..." works relative to current page
+                # MUST preserve the session token 's' if it exists!
+                s_token = st.query_params.get('s', '')
                 tracking_link = f"./?read={quote(item['link'])}"
+                if s_token:
+                    tracking_link += f"&s={s_token}"
                 
                 with cols[i % 3]:
                     st.markdown(f'<div class="news-item {read_class}">', unsafe_allow_html=True)
