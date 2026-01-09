@@ -101,10 +101,9 @@ if st.session_state.user is None:
             st.rerun() 
         else:
             # Result is an error code like TOKEN_NOT_FOUND or IP_MISMATCH
-            # If token is totally invalid (not found), let's clear it from browser
-            # so the debug view doesn't stay stuck on a defunct token.
-            if result == "TOKEN_NOT_FOUND":
-                 delete_cookie_js('session_token')
+            # We don't delete automatically here to avoid DuplicateElementKey
+            # when the Reset button also triggers.
+            pass
 
 
 # Logic to load user data if logged in
