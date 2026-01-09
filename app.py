@@ -952,11 +952,10 @@ elif source == "Bing News":
         
 cat_label = st.selectbox("カテゴリー", list(cats.keys()), key=f"cat_select_{source}")
 cat_code = cats[cat_label]
-    # Query input removed from here as it moved to global search
-    
-    st.divider()
-    st.markdown("### おすすめ設定")
-    
+# Query input removed from here as it moved to global search
+
+st.divider()
+st.markdown("### おすすめ設定")
 # Keyword management with Enter key support
 def add_keyword():
     new_kw = st.session_state.new_keyword_input
@@ -995,7 +994,7 @@ if st.session_state.recommendation_keywords:
                 st.rerun()
     
     
-    st.divider()
+st.divider()
 
 # --- Main Content ---
 st.markdown(f"<h1>{source}</h1>", unsafe_allow_html=True)
