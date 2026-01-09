@@ -22,6 +22,19 @@ import random
 # Database module
 import database as db
 
+def get_remote_ip():
+    """Get remote user IP from headers."""
+    try:
+        # Check various headers for IP
+        headers = st.context.headers
+        for header in ["X-Forwarded-For", "X-Real-IP", "Remote-Addr"]:
+            val = headers.get(header)
+            if val:
+                return val.split(",")[0].strip()
+        return "0.0.0.0"
+    except:
+        return "0.0.0.0"
+
 # Initialize DB
 db.init_db()
 
