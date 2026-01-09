@@ -91,8 +91,10 @@ if st.session_state.user is None:
             st.rerun() 
         else:
             # Result is an error code like TOKEN_NOT_FOUND or IP_MISMATCH
-            # We don't delete the cookie yet, just let the user know they need to login once normally
-            pass
+            # If token is totally invalid (not found), let's clear it from browser
+            # so the debug view doesn't stay stuck on a defunct token.
+            if result == "TOKEN_NOT_FOUND":
+                 delete_cookie_js('session_token')
 
 
 # Logic to load user data if logged in
@@ -285,6 +287,11 @@ with st.sidebar:
             st.warning("No session token found in browser.")
             
         if st.button("🔄 Force Refresh (Page Rerun)", key="debug_refresh"):
+            st.rerun()
+            
+        if st.button("🗑️ Reset Persistence (Delete Bad Cookie)", key="debug_clear"):
+            delete_cookie_js('session_token')
+            st.success("Cookie deletion requested. Please refresh if token persists.")
             st.rerun()
 
     st.markdown("### Settings")
