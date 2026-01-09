@@ -66,18 +66,23 @@ db.init_db()
 # Page Config
 
 def setup_touch_icon(image_path="app_icon.png"):
-    """Injects Apple Touch Icon using base64 encoding."""
+    """Injects Apple Touch Icon using base64 encoding with multiple sizes for iOS."""
     try:
         with open(image_path, "rb") as f:
             img_bytes = f.read()
         b64_img = base64.b64encode(img_bytes).decode('utf-8')
-        # mime type detection (simple)
         mime = "image/png"
         
         st.markdown(
             f"""
+            <link rel="apple-touch-icon" sizes="180x180" href="data:{mime};base64,{b64_img}">
+            <link rel="apple-touch-icon" sizes="152x152" href="data:{mime};base64,{b64_img}">
+            <link rel="apple-touch-icon" sizes="120x120" href="data:{mime};base64,{b64_img}">
             <link rel="apple-touch-icon" href="data:{mime};base64,{b64_img}">
-            <link rel="icon" href="data:{mime};base64,{b64_img}">
+            <link rel="icon" type="image/png" href="data:{mime};base64,{b64_img}">
+            <meta name="apple-mobile-web-app-capable" content="yes">
+            <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+            <meta name="apple-mobile-web-app-title" content="AI News Pro">
             """,
             unsafe_allow_html=True
         )
