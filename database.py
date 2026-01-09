@@ -47,6 +47,19 @@ def init_db():
         )
     ''')
     
+    # --- Migrations ---
+    # Add ip_address column if it doesn't exist (it might be missing if table was created in previous step)
+    try:
+        c.execute("ALTER TABLE persistent_sessions ADD COLUMN ip_address TEXT")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
+
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN auth_code TEXT")
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
 
