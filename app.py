@@ -270,7 +270,7 @@ with st.sidebar:
     if st.session_state.user:
         current_token = st.query_params.get('s')
         if current_token:
-            with st.expander("📌 継続ログインの設定", expanded=False):
+            with st.expander("継続ログインの設定", expanded=False):
                 st.write("このページを**ブックマーク（お気に入り登録）**しておくと、次回から自動ログインされます。")
                 st.code(f"https://ainews-kdzbuhnlquqbapw9wj9yxh.streamlit.app/?s={current_token}")
 
