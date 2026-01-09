@@ -1145,7 +1145,28 @@ with tab1:
 
 with tab2:
     if not st.session_state.recommendation_keywords:
-        st.info("サイドバーの「おすすめ設定」からキーワードを登録してください。")
+        st.info("サイドバーの「おすすめ設定」からキーワードを登録するか、下の人気キーワードから選んでください。")
+        
+        # Popular keyword suggestions
+        st.markdown("### 💡 人気のキーワード")
+        popular_keywords = [
+            "AI", "Python", "ChatGPT", "機械学習", 
+            "経済", "株価", "円相場", "ビットコイン",
+            "iPhone", "Android", "Google", "Apple",
+            "サッカー", "野球", "オリンピック",
+            "映画", "アニメ", "音楽", "ゲーム"
+        ]
+        
+        cols = st.columns(4)
+        for i, kw in enumerate(popular_keywords):
+            with cols[i % 4]:
+                if st.button(f"➕ {kw}", key=f"add_popular_{i}", use_container_width=True):
+                    if kw not in st.session_state.recommendation_keywords:
+                        st.session_state.recommendation_keywords.append(kw)
+                        if st.session_state.user:
+                            db.save_user_data(st.session_state.user, 'keywords', st.session_state.recommendation_keywords)
+                        st.toast(f"「{kw}」を追加しました")
+                        st.rerun()
     else:
         st.markdown(f"**登録キーワード:** {', '.join(st.session_state.recommendation_keywords)}")
         
