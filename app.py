@@ -884,7 +884,7 @@ st.markdown(f"""
     #scroll-to-top {{
         position: fixed;
         bottom: 30px;
-        right: 30px;
+        left: 30px;
         width: 50px;
         height: 50px;
         background: linear-gradient(135deg, {c['accent']} 0%, {c['text']} 100%);
