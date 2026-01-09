@@ -276,6 +276,19 @@ with st.sidebar:
             st.session_state.guest_mode = False
             st.rerun()
 
+    @st.dialog("📖 取扱説明書 (User Guide)", width="large")
+    def show_help():
+        try:
+            with open("USER_GUIDE.md", "r", encoding="utf-8") as f:
+                st.markdown(f.read())
+        except:
+            st.error("説明書が見つかりませんでした。")
+        if st.button("閉じる"):
+            st.rerun()
+
+    if st.button("📖 使い方を確認する", use_container_width=True):
+        show_help()
+
     # --- Bookmark Info (Visible when logged in) ---
     if st.session_state.user:
         current_token = st.query_params.get('s')
