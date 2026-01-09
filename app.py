@@ -296,21 +296,6 @@ with st.sidebar:
 
     st.divider()
 
-    with st.sidebar:
-        st.markdown("### フィルタ")
-        sort_option = st.selectbox("並び順", ["おすすめ順", "新しい順", "ソース別"])
-        
-        # Date Filter
-        date_labels = ["すべて", "今日", "過去3日", "過去1週間"]
-        date_default_index = 0
-        if st.session_state.date_filter in date_labels:
-            date_default_index = date_labels.index(st.session_state.date_filter)
-            
-        selected_date_filter = st.selectbox("日付", date_labels, index=date_default_index, key="date_filter_box")
-        if selected_date_filter != st.session_state.date_filter:
-            st.session_state.date_filter = selected_date_filter
-            st.rerun()
-
     # Mute Settings
     with st.expander("ミュート設定"):
         st.caption("指定した単語を含む記事を非表示にします")
@@ -1228,9 +1213,6 @@ with tab2:
     else:
         st.markdown(f"**登録キーワード:** {', '.join(st.session_state.recommendation_keywords)}")
         
-        # Sorting options
-        sort_option = st.radio("並び順", ["スコア順", "新しい順", "ソース別"], horizontal=True, key="rec_sort")
-        
         with st.spinner("全ソースからおすすめ記事を取得中..."):
             scored_items = get_recommended_articles(st.session_state.recommendation_keywords)
             
@@ -1248,12 +1230,7 @@ with tab2:
                 scored_items = filtered_scored
         
         if scored_items:
-            # Apply sorting
-            if sort_option == "新しい順":
-                scored_items.sort(key=lambda x: x[1]['published'], reverse=True)
-            elif sort_option == "ソース別":
-                scored_items.sort(key=lambda x: x[1]['source'])
-            # Default is already score order
+            # Default is already score order (from get_recommended_articles)
             
             # Limit display to top 50 AFTER filtering
             display_items = scored_items[:50]
