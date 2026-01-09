@@ -425,7 +425,7 @@ with st.sidebar:
                         db.save_user_data(st.session_state.user, 'keywords', st.session_state.recommendation_keywords)
                     st.rerun()
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=299)
 def fetch_news(source, category_code, query_text):
     """Fetch and parse news from RSS feeds."""
     
@@ -529,9 +529,9 @@ def fetch_news(source, category_code, query_text):
             else:
                 url = f"https://news.google.com/rss?{params}"
     elif source == "Qiita":
-        url = f"https://qiita.com/tags/{quote(query_text) if category_code != 'HEADLINES' else 'Python'}/feed"
+        url = f"https://qiita.com/tags/{quote(query_text) if category_code == 'SEARCH' else 'Python'}/feed"
     elif source == "Zenn":
-        url = f"https://zenn.dev/topics/{quote(query_text.lower()) if category_code != 'HEADLINES' else 'tech'}/feed"
+        url = f"https://zenn.dev/topics/{quote(query_text.lower()) if category_code == 'SEARCH' else 'tech'}/feed"
     elif source == "ITmedia":
         it_map = {
             "ALL": "itmedia_all.xml", "MOBILE": "mobile.xml", "ENTERPRISE": "enterprise.xml",
@@ -624,49 +624,46 @@ def get_recommended_articles(keywords):
     all_articles = []
     seen_links = set()
     
-    # Active search for each keyword across ALL sources
-    # Note: Some sources use 'SEARCH' category to trigger search mode
-    search_targets = [
-        "Bing News", "Yahoo! ニュース", "ライブドアニュース", "NHK ニュース",
-        "Google News", "Gigazine", "ITmedia", "CNET Japan",
-        "TechCrunch Japan", "Qiita", "Zenn", "ナタリー"
+    # Sources that rely on active searching
+    search_driven_sources = ["Bing News", "Google News", "Qiita", "Zenn"]
+    
+    # Sources that rely on filtering recent headlines
+    feed_driven_sources = [
+        "Yahoo! ニュース", "ライブドアニュース", "NHK ニュース",
+        "Gigazine", "ITmedia", "CNET Japan", "TechCrunch Japan", "ナタリー"
     ]
     
-    # Default category map for sources that don't support SEARCH query directly via param
-    # For these, we fetch HEADLINES/standard feed and filter client-side if needed,
-    # but fetch_news logic mostly handles "SEARCH" where applicable.
-    
     for i, kw in enumerate(keywords):
-        for source in search_targets:
+        # 1. Search Driven Sources (High Precision)
+        for source in search_driven_sources:
             try:
-                # Use cached fetch
-                # Note: For sources that don't support "SEARCH" category code in fetch_news,
-                # we might get an empty list or need to use a different category.
-                # Adjusting to use "SEARCH" where supported, or "HEADLINES" for scraping based?
-                # Actually, fetch_news doesn't handle "SEARCH" for all.
-                # Let's use a smarter category selection.
-                
-                cat_code = "SEARCH"
-                # Some sources might not support SEARCH, mapping fallback:
-                if source in ["NHK ニュース", "ライブドアニュース", "Gigazine", "CNET Japan", "TechCrunch Japan", "ナタリー", "ITmedia"]:
-                     # These don't have a search URL implemented in fetch_news, so we fetch standard feeds
-                     # and let the score calculator filter by keyword relevance.
-                     if source == "ITmedia": cat_code = "ALL"
-                     elif source == "ナタリー": cat_code = "MUSIC"
-                     else: cat_code = "HEADLINES"
-                
-                items = fetch_news(source, cat_code, kw)
-                
+                items = fetch_news(source, "SEARCH", kw)
                 for item in items:
                     if item['link'] not in seen_links:
-                        # Calculate score immediately
+                        # Score is usually high for these as they are search results
                         score = calculate_article_score(item, keywords)
-                        # Only include if it actually matches keywords (score > 0)
                         if score > 0:
                             all_articles.append((score, item))
                             seen_links.add(item['link'])
-            except Exception:
-                continue
+            except: continue
+
+        # 2. Feed Driven Sources (Filter recent items)
+        for source in feed_driven_sources:
+            try:
+                cat_code = "HEADLINES"
+                if source == "ITmedia": cat_code = "ALL"
+                elif source == "ナタリー": cat_code = "MUSIC"
+                
+                # Fetch simple feed without query
+                items = fetch_news(source, cat_code, "") 
+                
+                for item in items:
+                    if item['link'] not in seen_links:
+                        score = calculate_article_score(item, keywords)
+                        if score > 0: # Only include matches
+                            all_articles.append((score, item))
+                            seen_links.add(item['link'])
+            except: continue
                 
     # Sort by score (descending)
     all_articles.sort(reverse=True, key=lambda x: x[0])
