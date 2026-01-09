@@ -849,6 +849,7 @@ st.markdown(f"""
         border-radius: 12px;
         margin-bottom: 16px;
         background-color: {c['border']};
+        filter: brightness(0.85);
     }}
     
     .stButton > button {{
