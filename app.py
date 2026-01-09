@@ -278,12 +278,14 @@ with st.sidebar:
 
     @st.dialog("📖 取扱説明書 (User Guide)", width="large")
     def show_help():
+        if st.button("✕ 閉じる", key="help_close_top"):
+            st.rerun()
         try:
             with open("USER_GUIDE.md", "r", encoding="utf-8") as f:
                 st.markdown(f.read())
         except:
             st.error("説明書が見つかりませんでした。")
-        if st.button("閉じる"):
+        if st.button("✕ 閉じる", key="help_close_bottom"):
             st.rerun()
 
     if st.button("📖 使い方を確認する", use_container_width=True):
