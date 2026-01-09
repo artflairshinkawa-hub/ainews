@@ -119,11 +119,17 @@ if read_target:
             
         if user_email:
             db.mark_article_read(user_email, read_target)
-    except:
-        pass
+            print(f"Saved read status for {user_email}: {read_target}")
+        else:
+            print("Guest user read article")
+    except Exception as e:
+        print(f"Error saving read status: {e}")
+        st.error(f"Error saving read: {e}")
+        time.sleep(2) # Give time to see error
         
     # 3. Client-side Redirect
     st.markdown(f'<meta http-equiv="refresh" content="0;url={read_target}">', unsafe_allow_html=True)
+    st.write(f"Redirecting to {read_target}...") # Feedback
     st.stop() # Stop further rendering
 
 ALL_SOURCES = [
