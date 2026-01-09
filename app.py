@@ -15,15 +15,21 @@ def set_cookie_js(name, value, days=2):
     cookie_manager.set(name, value, expires_at=expires, key=f"set_{name}")
     
     # 2. Try Raw JS Fallback (especially for iframes/local mix)
-    # We use a conditional 'Secure' attribute based on whether we are on HTTPS
-    is_https = st.context.headers.get("X-Forwarded-Proto") == "https"
+    # Use lowercase for case-insensitivity
+    is_https = st.context.headers.get("X-Forwarded-Proto", "").lower() == "https"
     secure_attr = "SameSite=None; Secure" if is_https else "SameSite=Lax"
     
     max_age = days * 24 * 60 * 60
+    # We set multiple variations to see what the browser accepts
     js_code = f"""
         <script>
-        document.cookie = "{name}={value}; Max-Age={max_age}; Path=/; {secure_attr}";
-        console.log("Cookie {name} set attempt via Raw JS");
+        // Strategy A: Best for iframes (HTTPS)
+        document.cookie = "{name}={value}; Max-Age={max_age}; Path=/; SameSite=None; Secure";
+        // Strategy B: Best for Local (HTTP)
+        document.cookie = "{name}_{value}_lax={value}; Max-Age={max_age}; Path=/; SameSite=Lax";
+        // Strategy C: Absolute Simple
+        document.cookie = "{name}_{value}_simple={value}; Max-Age={max_age}; Path=/;";
+        console.log("Multi-strategy cookie set attempted for {name}");
         </script>
     """
     components.html(js_code, height=0)
@@ -315,10 +321,12 @@ with st.sidebar:
             st.success("Cookie deletion requested. Please refresh if token persists.")
             st.rerun()
 
-        if st.button("🧪 Test Cookie (Set Dummy)", key="debug_test"):
-            set_cookie_js('test_cookie', 'hello_world', days=1)
-            st.info("Test cookie requested. Refresh and check Context Cookies below.")
+        if st.button("🧪 Test Cookie (Set Multi-Strategy)", key="debug_test"):
+            set_cookie_js('debug_test', 'v1', days=1)
+            st.info("Set 3 cookies: debug_test, debug_test_v1_lax, debug_test_v1_simple. Please refresh.")
             st.rerun()
+
+    st.warning("⚠️ **Cookieが保存されない場合:**\n\nブラウザの設定で「サードパーティのCookieをブロックする」が有効になっている可能性があります。Streamlit Cloudはiframe内で動作するため、この設定を解除するか、ログインURLバーにある「目のアイコン」をクリックして許可してください。")
 
     st.markdown("### Settings")
     theme_btn = st.radio("テーマ選択", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "Dark" else 1)
