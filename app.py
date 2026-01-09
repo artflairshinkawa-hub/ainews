@@ -861,139 +861,138 @@ if not st.session_state.user and not st.session_state.guest_mode:
     
     st.stop() # Stop execution here if not logged in
 
-    st.divider()
+st.divider()
 
-    # Mute Settings
-    with st.expander("ミュート設定"):
-        st.caption("指定した単語を含む記事を非表示にします")
-        def add_mute():
-            new_m = st.session_state.new_mute_input
-            if new_m and new_m not in st.session_state.mute_words:
-                st.session_state.mute_words.append(new_m)
-                st.session_state.new_mute_input = ""
+# Mute Settings
+with st.expander("ミュート設定"):
+    st.caption("指定した単語を含む記事を非表示にします")
+    def add_mute():
+        new_m = st.session_state.new_mute_input
+        if new_m and new_m not in st.session_state.mute_words:
+            st.session_state.mute_words.append(new_m)
+            st.session_state.new_mute_input = ""
+            if st.session_state.user:
+                db.save_user_data(st.session_state.user, 'mute_words', st.session_state.mute_words)
+    
+    st.text_input("除外したい単語", key="new_mute_input", on_change=add_mute)
+    
+    if st.session_state.mute_words:
+        st.markdown("---")
+        for i, mw in enumerate(st.session_state.mute_words):
+            col1, col2 = st.columns([3, 1])
+            col1.markdown(f"🚫 {mw}")
+            if col2.button("✕", key=f"del_mute_{i}", use_container_width=True):
+                st.session_state.mute_words.pop(i)
                 if st.session_state.user:
                     db.save_user_data(st.session_state.user, 'mute_words', st.session_state.mute_words)
-        
-        st.text_input("除外したい単語", key="new_mute_input", on_change=add_mute)
-        
-        if st.session_state.mute_words:
-            st.markdown("---")
-            for i, mw in enumerate(st.session_state.mute_words):
-                c1, c2 = st.columns([3, 1])
-                c1.markdown(f"🚫 {mw}")
-                if c2.button("✕", key=f"del_mute_{i}", use_container_width=True):
-                    st.session_state.mute_words.pop(i)
-                    if st.session_state.user:
-                        db.save_user_data(st.session_state.user, 'mute_words', st.session_state.mute_words)
-                    st.rerun()
+                st.rerun()
 
-    # Define news sources
-    news_sources = [
-        "⚡ 総合トップ",
-        "Bing News",
-        "Yahoo! ニュース", 
-        "ライブドアニュース", 
-        "NHK ニュース",
-        "Google News", 
-        "Gigazine", 
-        "ITmedia",
-        "CNET Japan",
-        "TechCrunch Japan",
-        "Qiita",
-        "Zenn",
-        "ナタリー"
-    ]
+# Define news sources
+news_sources = [
+    "⚡ 総合トップ",
+    "Bing News",
+    "Yahoo! ニュース", 
+    "ライブドアニュース", 
+    "NHK ニュース",
+    "Google News", 
+    "Gigazine", 
+    "ITmedia",
+    "CNET Japan",
+    "TechCrunch Japan",
+    "Qiita",
+    "Zenn",
+    "ナタリー"
+]
 
-    source = st.selectbox(
-        "ニュースソース", 
-        news_sources, 
-        index=0, # Set "⚡ 総合トップ" as default
-        key="news_source_select"
-    )
+source = st.selectbox(
+    "ニュースソース", 
+    news_sources, 
+    index=0, # Set "⚡ 総合トップ" as default
+    key="news_source_select"
+)
     
-    cats = {}
-    if source == "⚡ 総合トップ":
-        cats = {"最新トレンド": "HEADLINES"}
-    elif source == "Yahoo! ニュース":
-        cats = {
-            "主要": "HEADLINES", "IT・科学": "TECHNOLOGY", "経済": "BUSINESS", "国際": "International", 
-            "エンタメ": "Entertainment", "スポーツ": "Sports", "国内": "Domestic", "ライフ": "Life", 
-            "地域": "Local"
-        }
-    elif source == "NHK ニュース":
-        cats = {
-            "主要": "HEADLINES", "社会": "Social", "政治": "Politics", "国際": "International", 
-            "経済": "Economy", "科学・文化": "Science", "スポーツ": "Sports", "地域": "Local"
-        }
-    elif source == "Google News":
-        cats = {
-            "トップ": "HEADLINES", "テクノロジー": "TECHNOLOGY", "ビジネス": "BUSINESS", "国際": "International", 
-            "エンタメ": "Entertainment", "スポーツ": "Sports", "科学": "Science", "健康": "Health"
-        }
-    elif source == "ITmedia":
-        cats = {
-            "総合": "ALL", "モバイル": "MOBILE", "エンタープライズ": "ENTERPRISE", 
-            "PC USER": "PCUSER", "ビジネスオンライン": "BUSINESS"
-        }
-    elif source in ["Qiita", "Zenn"]:
-        cats = {"トレンド": "HEADLINES"}
-    elif source == "ナタリー":
-        cats = {
-            "音楽": "MUSIC", "映画": "MOVIE", "お笑い": "COMEDY", "コミック": "COMIC"
-        }
-    elif source in ["CNET Japan", "TechCrunch Japan", "Gigazine", "ライブドアニュース"]:
-        cats = {"トップ": "HEADLINES"}
-    elif source == "Bing News":
-        cats = {
-            "トップ": "HEADLINES", "ビジネス": "Business", "テクノロジー": "Technology", 
-            "エンタメ": "Entertainment", "政治": "Politics", "科学": "Science", 
-            "健康": "Health", "スポーツ": "Sports", "国際": "World", "国内": "Japan"
-        }
+cats = {}
+if source == "⚡ 総合トップ":
+    cats = {"最新トレンド": "HEADLINES"}
+elif source == "Yahoo! ニュース":
+    cats = {
+        "主要": "HEADLINES", "IT・科学": "TECHNOLOGY", "経済": "BUSINESS", "国際": "International", 
+        "エンタメ": "Entertainment", "スポーツ": "Sports", "国内": "Domestic", "ライフ": "Life", 
+        "地域": "Local"
+    }
+elif source == "NHK ニュース":
+    cats = {
+        "主要": "HEADLINES", "社会": "Social", "政治": "Politics", "国際": "International", 
+        "経済": "Economy", "科学・文化": "Science", "スポーツ": "Sports", "地域": "Local"
+    }
+elif source == "Google News":
+    cats = {
+        "トップ": "HEADLINES", "テクノロジー": "TECHNOLOGY", "ビジネス": "BUSINESS", "国際": "International", 
+        "エンタメ": "Entertainment", "スポーツ": "Sports", "科学": "Science", "健康": "Health"
+    }
+elif source == "ITmedia":
+    cats = {
+        "総合": "ALL", "モバイル": "MOBILE", "エンタープライズ": "ENTERPRISE", 
+        "PC USER": "PCUSER", "ビジネスオンライン": "BUSINESS"
+    }
+elif source in ["Qiita", "Zenn"]:
+    cats = {"トレンド": "HEADLINES"}
+elif source == "ナタリー":
+    cats = {
+        "音楽": "MUSIC", "映画": "MOVIE", "お笑い": "COMEDY", "コミック": "COMIC"
+    }
+elif source in ["CNET Japan", "TechCrunch Japan", "Gigazine", "ライブドアニュース"]:
+    cats = {"トップ": "HEADLINES"}
+elif source == "Bing News":
+    cats = {
+        "トップ": "HEADLINES", "ビジネス": "Business", "テクノロジー": "Technology", 
+        "エンタメ": "Entertainment", "政治": "Politics", "科学": "Science", 
+        "健康": "Health", "スポーツ": "Sports", "国際": "World", "国内": "Japan"
+    }
         
-    cat_label = st.selectbox("カテゴリー", list(cats.keys()), key=f"cat_select_{source}")
-    cat_code = cats[cat_label]
+cat_label = st.selectbox("カテゴリー", list(cats.keys()), key=f"cat_select_{source}")
+cat_code = cats[cat_label]
     # Query input removed from here as it moved to global search
     
     st.divider()
     st.markdown("### おすすめ設定")
     
-    # Keyword management with Enter key support
-    def add_keyword():
-        new_kw = st.session_state.new_keyword_input
-        if new_kw and new_kw not in st.session_state.recommendation_keywords:
-                if len(st.session_state.recommendation_keywords) < 5:
-                    st.session_state.recommendation_keywords.append(new_kw)
-                    st.session_state.new_keyword_input = ""  # Clear input
-                    # Save to DB
-                    if st.session_state.user:
-                        db.save_user_data(st.session_state.user, 'keywords', st.session_state.recommendation_keywords)
-                else:
-                    st.warning("登録できるキーワードは5つまでです")
-        elif new_kw in st.session_state.recommendation_keywords:
-            st.warning("そのキーワードは既に登録されています")
+# Keyword management with Enter key support
+def add_keyword():
+    new_kw = st.session_state.new_keyword_input
+    if new_kw and new_kw not in st.session_state.recommendation_keywords:
+            if len(st.session_state.recommendation_keywords) < 5:
+                st.session_state.recommendation_keywords.append(new_kw)
+                st.session_state.new_keyword_input = ""  # Clear input
+                # Save to DB
+                if st.session_state.user:
+                    db.save_user_data(st.session_state.user, 'keywords', st.session_state.recommendation_keywords)
+            else:
+                st.warning("登録できるキーワードは5つまでです")
+    elif new_kw in st.session_state.recommendation_keywords:
+        st.warning("そのキーワードは既に登録されています")
     
-    new_keyword = st.text_input(
-        "興味のあるキーワードを追加（Enterで追加）", 
-        key="new_keyword_input", 
-        placeholder="例: AI, Python, 経済",
-        on_change=add_keyword
-    )
-    
-    
-    # Display current keywords
-    if st.session_state.recommendation_keywords:
-        st.markdown("**登録済みキーワード:**")
-        for i, kw in enumerate(st.session_state.recommendation_keywords):
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.markdown(f"• {kw}")
-            with col2:
-                if st.button("✕", key=f"remove_kw_{i}", use_container_width=True):
-                    st.session_state.recommendation_keywords.pop(i)
-                    # Save to DB
-                    if st.session_state.user:
-                        db.save_user_data(st.session_state.user, 'keywords', st.session_state.recommendation_keywords)
-                    st.rerun()
+new_keyword = st.text_input(
+    "興味のあるキーワードを追加（Enterで追加）", 
+    key="new_keyword_input", 
+    placeholder="例: AI, Python, 経済",
+    on_change=add_keyword
+)
+
+# Display current keywords
+if st.session_state.recommendation_keywords:
+    st.markdown("**登録済みキーワード:**")
+    for i, kw in enumerate(st.session_state.recommendation_keywords):
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"• {kw}")
+        with col2:
+            if st.button("✕", key=f"remove_kw_{i}", use_container_width=True):
+                st.session_state.recommendation_keywords.pop(i)
+                # Save to DB
+                if st.session_state.user:
+                    db.save_user_data(st.session_state.user, 'keywords', st.session_state.recommendation_keywords)
+                st.rerun()
     
     
     st.divider()
