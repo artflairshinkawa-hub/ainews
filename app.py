@@ -799,11 +799,20 @@ st.markdown(f"""
     }}
     
     header[data-testid="stHeader"] svg {{
-        fill: #888888 !important;
-        opacity: 0.8;
+        fill: {c['text']} !important;
     }}
     header[data-testid="stHeader"] button {{
-        color: #888888 !important;
+        color: {c['text']} !important;
+    }}
+    /* Sidebar Toggle Button Visibility */
+    button[data-testid="stSidebarCollapse"] {{
+        background-color: {c['sidebar_bg']} !important;
+        border: 1px solid {c['border']} !important;
+        color: {c['text']} !important;
+        opacity: 1 !important;
+    }}
+    button[data-testid="stSidebarCollapse"] svg {{
+        fill: {c['text']} !important;
     }}
     header[data-testid="stHeader"] {{ background-color: transparent !important; }}
     
