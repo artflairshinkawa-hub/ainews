@@ -1005,95 +1005,55 @@ if not st.session_state.user and not st.session_state.guest_mode:
                 clear_auth_flow()
                 st.rerun()
 
-        # Recovery Code Screen
-        elif st.session_state.auth_step == 'recovery_code':
-            st.markdown("### パスワード再設定")
-            st.info("認証コードをメールに送信しました。受信トレイを確認してください。")
-            rec_code = st.text_input("認証コード", key="rec_code_input")
-            if st.button("次へ", use_container_width=True, type="primary"):
-                if db.verify_recovery_code(st.session_state.temp_email, rec_code):
-                    st.session_state.auth_step = 'recovery_pass'
+        st.markdown(f"<h1 style='text-align: center;'>🍌 AI News Pro</h1>", unsafe_allow_html=True)
+        
+        # Auth Code Verification Screen (Verification Step)
+        if st.session_state.auth_step == '2fa':
+            st.markdown("### 認証コード入力")
+            st.info(f"**{st.session_state.temp_email}** 宛に認証コードを送信しました。")
+            code_input = st.text_input("6桁の認証コード", key="2fa_code")
+            if st.button("ログイン", use_container_width=True, type="primary"):
+                if db.verify_2fa(st.session_state.temp_email, code_input):
+                    email = st.session_state.temp_email
+                    st.session_state.user = email
+                    # Create persistent session
+                    ip = get_remote_ip()
+                    set_persistent_login(email, ip)
+                    
+                    load_user_session()
+                    clear_auth_flow()
+                    st.success("ログインしました！")
                     st.rerun()
                 else:
                     st.error("コードが間違っています")
-            if st.button("戻る"):
-                clear_auth_state()
+            if st.button("メールアドレス入力に戻る", use_container_width=True):
+                clear_auth_flow()
                 st.rerun()
 
-        # Recovery New Password Screen
-        elif st.session_state.auth_step == 'recovery_pass':
-            st.markdown("### 新しいパスワード")
-            new_p1 = st.text_input("新しいパスワード", type="password", key="new_p1")
-            new_p2 = st.text_input("確認用", type="password", key="new_p2")
-            if st.button("変更", use_container_width=True, type="primary"):
-                if new_p1 and new_p1 == new_p2:
-                    db.update_password(st.session_state.temp_email, new_p1)
-                    st.success("パスワードを変更しました！ログインしてください。")
-                    clear_auth_state()
-                    time.sleep(2)
-                    st.rerun()
-                else:
-                    st.error("パスワードが一致しません")
-
-        # Main Auth Tabs (Login / Register / Forgot)
+        # Single Login/Register Flow (Email Entry)
         else:
-            tab_login, tab_register, tab_forgot = st.tabs(["ログイン", "新規登録", "パスワード忘れ"])
+            st.markdown("### ログイン / 新規登録")
+            st.write("メールアドレスを入力してください。認証コードをお送りします。")
+            login_email = st.text_input("メールアドレス", key="l_mail_passwordless")
             
-            with tab_login:
-                l_mail = st.text_input("メールアドレス", key="l_mail")
-                l_pass = st.text_input("パスワード", type="password", key="l_pass")
-                if st.button("ログイン", use_container_width=True, type="primary"):
-                    secret = db.verify_user(l_mail, l_pass)
-                    if secret:
-                        # Generate and send real code
-                        code = db.set_auth_code(l_mail)
-                        if send_auth_email(l_mail, "【AI News Pro】認証コード", f"あなたの認証コードは {code} です。"):
-                            st.session_state.temp_email = l_mail
-                            st.session_state.temp_secret = secret
-                            st.session_state.auth_step = '2fa'
-                            st.rerun()
-                        else:
-                            st.error("メール送信に失敗しました")
+            if st.button("認証コードを送信", use_container_width=True, type="primary"):
+                if login_email and "@" in login_email:
+                    # 1. Ensure user exists and get secret (placeholder for future use)
+                    secret = db.ensure_user_exists(login_email)
+                    
+                    # 2. Generate and send auth code
+                    code = db.set_auth_code(login_email)
+                    if send_auth_email(login_email, "【AI News Pro】ログイン認証コード", f"ログイン用の認証コードは {code} です。"):
+                        st.session_state.temp_email = login_email
+                        st.session_state.temp_secret = secret
+                        st.session_state.auth_step = '2fa'
+                        st.success("認証コードを送信しました！")
+                        time.sleep(1)
+                        st.rerun()
                     else:
-                        st.error("メールアドレスまたはパスワードが間違っています")
-            
-            with tab_register:
-                r_mail = st.text_input("メールアドレス", key="r_mail")
-                r_pass = st.text_input("パスワード", type="password", key="r_pass")
-                if st.button("アカウント作成", use_container_width=True):
-                    if r_mail and r_pass:
-                        secret = db.create_user(r_mail, r_pass)
-                        if secret:
-                            # Generate and send code
-                            code = db.set_auth_code(r_mail)
-                            if send_auth_email(r_mail, "【AI News Pro】新規登録 認証コード", f"新規登録を完了するための認証コードは {code} です。"):
-                                st.session_state.temp_email = r_mail
-                                st.session_state.temp_secret = secret
-                                st.session_state.auth_step = '2fa'
-                                st.success("認証コードを送信しました！")
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.error("メール送信に失敗しました")
-                        else:
-                            st.error("そのメールアドレスは既に使用されています")
-                    else:
-                        st.warning("全ての項目を入力してください")
-
-            with tab_forgot:
-                f_mail = st.text_input("登録メールアドレス", key="f_mail")
-                if st.button("コード送信", use_container_width=True):
-                    if f_mail:
-                        code = db.set_recovery_code(f_mail)
-                        if code:
-                            if send_auth_email(f_mail, "【AI News Pro】パスワード再設定コード", f"パスワード再設定用の認証コードは {code} です。"):
-                                st.session_state.temp_email = f_mail
-                                st.session_state.auth_step = 'recovery_code'
-                                st.rerun()
-                            else:
-                                st.error("メール送信に失敗しました")
-                        else:
-                            st.error("ユーザーが見つかりません")
+                        st.error("メール送信に失敗しました。設定を確認してください。")
+                else:
+                    st.warning("有効なメールアドレスを入力してください")
             
             st.divider()
             if st.button("ログインせずに利用する（ゲストモード）", use_container_width=True):

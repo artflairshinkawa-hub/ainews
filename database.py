@@ -96,6 +96,25 @@ def create_user(email, password):
     finally:
         conn.close()
 
+def ensure_user_exists(email):
+    """Checks if user exists, creates if not. Returns the 2FA secret."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT two_factor_secret FROM users WHERE email = ?", (email,))
+    row = c.fetchone()
+    if row:
+        conn.close()
+        return row[0]
+    else:
+        # Create new user with dummy password
+        # Generate a random base32-like string as a mock 2FA secret
+        secret = ''.join(random.choices(string.ascii_uppercase + string.digits, k=16))
+        c.execute("INSERT INTO users (email, password_hash, two_factor_secret) VALUES (?, ?, ?)", 
+                  (email, hash_password("magic_password_placeholder"), secret))
+        conn.commit()
+        conn.close()
+        return secret
+
 def verify_user(email, password):
     """Verify login credentials. Returns 2FA secret if valid, None otherwise."""
     conn = sqlite3.connect(DB_FILE)
