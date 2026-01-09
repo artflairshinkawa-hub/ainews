@@ -2,44 +2,48 @@ import streamlit as st
 import streamlit.components.v1 as components
 import extra_streamlit_components as stx
 
-# --- Cookie Management (Library-based) ---
-# Initialize CookieManager with a unique key for stability
-cookie_manager = stx.CookieManager(key="cookie_manager_v1")
+# --- Cookie Management (Robust JS Implementation) ---
+# We avoid CookieManager library here as it can be flaky in iframes
 
 def set_cookie_js(name, value, days=2):
-    """Set a cookie using both Manager and Raw JS for maximum compatibility."""
+    """Set a cookie using Raw JS with multiple fallback strategies and error handling."""
     import datetime
-    expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days)
-    
-    # 1. Try CookieManager
-    cookie_manager.set(name, value, expires_at=expires, key=f"set_{name}")
-    
-    # 2. Try Raw JS Fallback (especially for iframes/local mix)
-    # Use lowercase for case-insensitivity
-    is_https = st.context.headers.get("X-Forwarded-Proto", "").lower() == "https"
-    secure_attr = "SameSite=None; Secure" if is_https else "SameSite=Lax"
-    
     max_age = days * 24 * 60 * 60
-    # We set multiple variations to see what the browser accepts
+    
+    # Detection for HTTPS (Streamlit Cloud uses proxies that set this header)
+    is_https = st.context.headers.get("X-Forwarded-Proto", "").lower() == "https"
+    
+    # Strategically try multiple attribute sets
     js_code = f"""
         <script>
-        // Strategy A: Best for iframes (HTTPS)
-        document.cookie = "{name}={value}; Max-Age={max_age}; Path=/; SameSite=None; Secure";
-        // Strategy B: Best for Local (HTTP)
-        document.cookie = "{name}_{value}_lax={value}; Max-Age={max_age}; Path=/; SameSite=Lax";
-        // Strategy C: Absolute Simple
-        document.cookie = "{name}_{value}_simple={value}; Max-Age={max_age}; Path=/;";
-        console.log("Multi-strategy cookie set attempted for {name}");
+        function setCookie(n, v, days, s) {{
+            let d = new Date();
+            d.setTime(d.getTime() + (days*24*60*60*1000));
+            let expires = "expires="+ d.toUTCString();
+            document.cookie = n + "=" + v + ";" + expires + ";path=/;" + s;
+        }}
+        
+        // 1. Primary Site Token
+        setCookie("{name}", "{value}", {days}, "{'SameSite=None; Secure' if is_https else 'SameSite=Lax'}");
+        
+        // 2. Backup Local Token
+        setCookie("{name}_backup", "{value}", {days}, "SameSite=Lax");
+        
+        // 3. Simple Token
+        setCookie("{name}_simple", "{value}", {days}, "");
+        
+        console.log("Persistence tokens set at " + new Date().toISOString());
         </script>
     """
     components.html(js_code, height=0)
 
 def delete_cookie_js(name):
-    """Delete a cookie."""
-    cookie_manager.delete(name, key=f"del_{name}")
+    """Delete all variations of the cookie."""
     js_code = f"""
         <script>
         document.cookie = "{name}=; Max-Age=0; Path=/;";
+        document.cookie = "{name}_backup=; Max-Age=0; Path=/;";
+        document.cookie = "{name}_simple=; Max-Age=0; Path=/;";
         </script>
     """
     components.html(js_code, height=0)
@@ -111,27 +115,19 @@ ALL_SOURCES = [
 if 'user' not in st.session_state:
     st.session_state.user = None
 
-# Try to load persistent session if not logged in
+# Robust persistent session loader
 if st.session_state.user is None:
-    # 1. Try CookieManager (Standard for library use)
-    token = cookie_manager.get('session_token')
-    # 2. Try native st.context.cookies (Fallback if component slow to load)
-    if not token:
-        token = st.context.cookies.get('session_token')
-        
+    cookies = st.context.cookies
+    # Try all backup names
+    token = cookies.get('session_token') or cookies.get('session_token_backup') or cookies.get('session_token_simple')
+    
     if token:
         ip = get_remote_ip()
         result = db.verify_persistent_session(token, ip)
-        if "@" in str(result): # Check if result is an email
+        if "@" in str(result):
             st.session_state.user = result
             load_user_session()
-            time.sleep(0.1) 
-            st.rerun() 
-        else:
-            # Result is an error code like TOKEN_NOT_FOUND or IP_MISMATCH
-            # We don't delete automatically here to avoid DuplicateElementKey
-            # when the Reset button also triggers.
-            pass
+            st.rerun()
 
 
 # Logic to load user data if logged in
@@ -293,18 +289,13 @@ with st.sidebar:
     with st.expander("🔍 Debug: ログイン維持状態", expanded=True):
         ip = get_remote_ip()
         st.write(f"Detected IP: `{ip}`")
-        st.write("Context Cookies:", st.context.cookies)
+        st.write("Current Cookies:", st.context.cookies)
         
-        token_mgr = cookie_manager.get('session_token')
-        token_ctx = st.context.cookies.get('session_token')
+        cookies = st.context.cookies
+        token = cookies.get('session_token') or cookies.get('session_token_backup') or cookies.get('session_token_simple')
         
-        st.write(f"Manager Token: `{'Found' if token_mgr else 'None'}`")
-        st.write(f"Context Token: `{'Found' if token_ctx else 'None'}`")
-        
-        if token_mgr or token_ctx:
-            token = token_mgr or token_ctx
+        if token:
             st.write(f"Active Token: `{token[:10]}...`")
-            # Verify manually in debug view
             user_check = db.verify_persistent_session(token, ip)
             if "@" in str(user_check):
                 st.success(f"DB Verification: ✅ {user_check}")
@@ -313,7 +304,7 @@ with st.sidebar:
         else:
             st.warning("No session token found in browser.")
             
-        if st.button("🔄 Force Refresh (Page Rerun)", key="debug_refresh"):
+        if st.button("🔄 Force Refresh", key="debug_refresh"):
             st.rerun()
             
         if st.button("🗑️ Reset Persistence (Delete Bad Cookie)", key="debug_clear"):
@@ -983,10 +974,15 @@ if not st.session_state.user and not st.session_state.guest_mode:
                     ip = get_remote_ip()
                     token = db.create_persistent_session(email, ip)
                     set_cookie_js('session_token', token)
+                    st.success("ログイン成功！設定を保存しています...")
+                    time.sleep(1.0) # WAIT for JS execution and browser commit
                     
-                    load_user_session() # Load settings for the new user
-                    clear_auth_flow()   # Clear intermediate auth state
-                    st.rerun()
+                    load_user_session()
+                    clear_auth_flow()
+                    if st.button("アプリに入る 🚀", use_container_width=True):
+                        st.rerun()
+                    # Also try auto-rerun after a bit longer
+                    # st.rerun() # We'll remove automatic rerun and let the user click or wait
                 else:
                     st.error("コードが間違っています")
             if st.button("戻る", use_container_width=True):
