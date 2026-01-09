@@ -615,7 +615,7 @@ def calculate_article_score(article, keywords):
 
 def get_recommended_articles(keywords):
     """
-    Fetch articles by actively searching for each keyword in Bing and Google News.
+    Fetch articles by actively searching for each keyword across all sources.
     This ensures specific topics (e.g., 'Frieren', 'AI') are found even if not in headlines.
     """
     if not keywords:
@@ -624,18 +624,22 @@ def get_recommended_articles(keywords):
     all_articles = []
     seen_links = set()
     
-    # Active search for each keyword
-    # Limiting to Bing & Google for best search performance
-    search_targets = ["Bing News", "Google News"]
+    # Search across ALL available sources
+    search_targets = [
+        "Bing News", "Google News", "Yahoo! ニュース", 
+        "ライブドアニュース", "NHK ニュース", "Gigazine",
+        "ITmedia", "CNET Japan", "TechCrunch Japan",
+        "Qiita", "Zenn", "ナタリー"
+    ]
     
     progress_text = st.empty()
     
     for i, kw in enumerate(keywords):
-        # Determine source rotation or query both?
-        # Querying both for max recall.
+        progress_text.text(f"キーワード「{kw}」を検索中... ({i+1}/{len(keywords)})")
+        
         for source in search_targets:
             try:
-                # Use cached fetch
+                # Use cached fetch with SEARCH category
                 items = fetch_news(source, "SEARCH", kw)
                 for item in items:
                     if item['link'] not in seen_links:
@@ -646,6 +650,8 @@ def get_recommended_articles(keywords):
                             seen_links.add(item['link'])
             except Exception:
                 continue
+    
+    progress_text.empty()
                 
     # Sort by score (descending)
     all_articles.sort(reverse=True, key=lambda x: x[0])
