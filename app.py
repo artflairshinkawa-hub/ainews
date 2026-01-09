@@ -1,5 +1,13 @@
 import streamlit as st
 import streamlit.components.v1 as components
+import extra_streamlit_components as stx
+
+# --- Cookie Management (Library-based) ---
+@st.cache_resource
+def get_cookie_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_cookie_manager()
 import feedparser
 import time
 import pandas as pd
@@ -54,9 +62,8 @@ ALL_SOURCES = [
 # --- Session State ---
 if 'user' not in st.session_state:
     st.session_state.user = None
-    # Try to load persistent session via cookie
-    cookies = st.context.cookies
-    token = cookies.get('session_token')
+    # Try to load persistent session via CookieManager
+    token = cookie_manager.get('session_token')
     if token:
         ip = get_remote_ip()
         valid_user = db.verify_persistent_session(token, ip)
@@ -190,26 +197,17 @@ def send_auth_email(target_email, subject, body):
              st.error(f"メール送信エラー: {str(e)}")
         return False
 
-# --- Cookie Management (JS Helpers) ---
+# --- Cookie Management (Library-based) ---
 def set_cookie_js(name, value, days=2):
-    """Set a cookie via JS injection."""
-    expires = days * 24 * 60 * 60
-    # Use SameSite=None; Secure for better compatibility in iframes (Streamlit Cloud)
-    js_code = f"""
-        <script>
-        document.cookie = "{name}={value}; Max-Age={expires}; Path=/; SameSite=None; Secure";
-        </script>
-    """
-    components.html(js_code, height=0)
+    """Set a cookie using CookieManager."""
+    # datetime for expiration
+    import datetime
+    expires = datetime.datetime.now() + datetime.timedelta(days=days)
+    cookie_manager.set(name, value, expires_at=expires)
 
 def delete_cookie_js(name):
-    """Delete a cookie via JS injection."""
-    js_code = f"""
-        <script>
-        document.cookie = "{name}=; Max-Age=0; Path=/; SameSite=None; Secure";
-        </script>
-    """
-    components.html(js_code, height=0)
+    """Delete a cookie using CookieManager."""
+    cookie_manager.delete(name)
 
 def get_remote_ip():
     """Get remote user IP from headers."""
@@ -244,14 +242,15 @@ with st.sidebar:
     with st.expander("🔍 Debug: ログイン維持状態", expanded=True):
         ip = get_remote_ip()
         st.write(f"IP: `{ip}`")
-        st.write("Cookies:", st.context.cookies)
-        token = st.context.cookies.get('session_token')
+        st.write("Native Context Cookies:", st.context.cookies)
+        token = cookie_manager.get('session_token')
         if token:
-            st.success(f"Token Detected")
-            # Show if IP matches check would pass
+            st.success(f"Token Detected (via Manager)")
             st.write(f"Token: `{token[:10]}...`")
         else:
-            st.warning("Token NOT Found")
+            st.warning("Token NOT Found (via Manager)")
+            if st.button("Force Cookie Check (Rerun)"):
+                st.rerun()
 
     st.markdown("### Settings")
     theme_btn = st.radio("テーマ選択", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "Dark" else 1)
