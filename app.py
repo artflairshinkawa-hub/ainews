@@ -402,6 +402,9 @@ with st.sidebar:
                     st.warning("登録できるキーワードは5つまでです")
         elif new_kw in st.session_state.recommendation_keywords:
             st.warning("そのキーワードは既に登録されています")
+    
+    # Debug Options
+    debug_mode = st.checkbox("🛠️ デバッグモード", key="debug_mode", help="おすすめ記事の取得状況を表示します")
 
     new_keyword = st.text_input(
         "興味のあるキーワードを追加（Enterで追加）", 
@@ -428,6 +431,9 @@ with st.sidebar:
 @st.cache_data(ttl=299)
 def fetch_news(source, category_code, query_text):
     """Fetch and parse news from RSS feeds."""
+    
+    # Debug info (only visible if debug_mode is active in session)
+    is_debug = st.session_state.get('debug_mode', False)
     
     # --- Global Top Aggregation Logic ---
     if source == "⚡ 総合トップ":
@@ -674,11 +680,15 @@ def get_recommended_articles(keywords):
                             all_articles.append((score, item))
                             seen_links.add(item['link'])
             except Exception as e:
+                if is_debug: st.error(f"Error fetching feed {source}: {e}")
                 print(f"Error fetching feed {source}: {e}")
                 continue
                 
     # Sort by score (descending)
     all_articles.sort(reverse=True, key=lambda x: x[0])
+    
+    if is_debug:
+        st.write(f"Total articles found: {len(all_articles)}")
     
     # Return top items
     return all_articles[:60]
