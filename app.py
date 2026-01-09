@@ -98,40 +98,6 @@ def setup_touch_icon():
 st.set_page_config(page_title="AI News Pro", page_icon="🍌", layout="wide")
 setup_touch_icon()
 
-# --- Redirect Handler for Read Tracking ---
-# Must be at the very top to intercept before UI rendering
-read_target = st.query_params.get("read")
-if read_target:
-    # 1. Mark as read in session
-    if 'read_articles' not in st.session_state:
-        st.session_state.read_articles = set()
-    st.session_state.read_articles.add(read_target)
-    
-    # 2. Mark as read in DB if logged in
-    # We need to manually check auth here because normal flow hasn't run yet
-    try:
-        user_email = None
-        s_token = st.query_params.get('s')
-        if s_token:
-            ip = get_remote_ip()
-            res = db.verify_persistent_session(s_token, ip)
-            if "@" in str(res): user_email = res
-            
-        if user_email:
-            db.mark_article_read(user_email, read_target)
-            print(f"Saved read status for {user_email}: {read_target}")
-        else:
-            print("Guest user read article")
-    except Exception as e:
-        print(f"Error saving read status: {e}")
-        st.error(f"Error saving read: {e}")
-        time.sleep(2) # Give time to see error
-        
-    # 3. Client-side Redirect
-    st.markdown(f'<meta http-equiv="refresh" content="0;url={read_target}">', unsafe_allow_html=True)
-    st.write(f"Redirecting to {read_target}...") # Feedback
-    st.stop() # Stop further rendering
-
 ALL_SOURCES = [
     "Bing News", "Yahoo! ニュース", "ライブドアニュース", "NHK ニュース", 
     "Google News", "Gigazine", "ITmedia", "CNET Japan", 
@@ -146,16 +112,12 @@ def load_user_session():
         st.session_state.bookmarks = db.load_user_data(username, 'bookmarks', [])
         saved_theme = db.load_user_data(username, 'theme', 'Dark')
         st.session_state.theme = saved_theme
-        st.session_state.theme = saved_theme
         st.session_state.mute_words = db.load_user_data(username, 'mute_words', [])
-        st.session_state.read_articles = db.get_read_articles(username)
 
 if 'theme' not in st.session_state:
     st.session_state.theme = 'Dark'
 if 'bookmarks' not in st.session_state:
     st.session_state.bookmarks = []
-if 'read_articles' not in st.session_state:
-    st.session_state.read_articles = set()
 if 'recommendation_keywords' not in st.session_state:
     st.session_state.recommendation_keywords = []
 if 'date_filter' not in st.session_state:
@@ -348,14 +310,6 @@ with st.sidebar:
         if selected_date_filter != st.session_state.date_filter:
             st.session_state.date_filter = selected_date_filter
             st.rerun()
-
-        # Hide Read Filter
-        hide_read = st.checkbox("既読を非表示", value=False, key="hide_read_toggle")
-
-        st.divider()
-        st.caption(f"ログイン: {st.session_state.user if st.session_state.user else 'Guest'}")
-        st.caption(f"既読記事数: {len(st.session_state.read_articles)}")
-
 
     # Mute Settings
     with st.expander("ミュート設定"):
@@ -1016,16 +970,6 @@ st.markdown(f"""
         transform: translateY(-5px);
         box-shadow: 0 6px 20px rgba(0,0,0,0.4);
     }}
-    /* Read article styling */
-    .news-item.read {{
-        opacity: 0.6;
-        filter: grayscale(80%);
-        transition: all 0.3s ease;
-    }}
-    .news-item.read:hover {{
-        opacity: 0.9;
-        filter: grayscale(0%);
-    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1325,39 +1269,23 @@ with tab2:
                 st.rerun()
             
             cols = st.columns(3)
-            current_app_url = st.query_params.get("base_url", "") # Not reliable, just use relative
-            
             for i, (score, item) in enumerate(display_items):
-                # Check read status
-                is_read = item['link'] in st.session_state.read_articles
-                if hide_read and is_read:
-                    continue
-                    
-                read_class = "read" if is_read else ""
-                
-                # Construct tracking URL (Current App + ?read=TARGET)
-                # MUST preserve the session token 's' if it exists!
-                s_token = st.query_params.get('s', '')
-                tracking_link = f"./?read={quote(item['link'])}"
-                if s_token:
-                    tracking_link += f"&s={s_token}"
-                
                 with cols[i % 3]:
-                    st.markdown(f'<div class="news-item {read_class}">', unsafe_allow_html=True)
+                    st.markdown(f'<div class="news-item">', unsafe_allow_html=True)
                     ik = f"ic_{item['id']}"
                     img = item['img_src'] or st.session_state.get(ik)
                     
                     if img:
-                        # Use tracking link on image
-                         st.markdown(f'<a href="{tracking_link}" target="_self"><img src="{img}" class="news-thumb"></a>', unsafe_allow_html=True)
+                        st.markdown(f'<a href="{item["link"]}" target="_blank"><img src="{img}" class="news-thumb"></a>', unsafe_allow_html=True)
                     else:
-                         st.markdown(f'<div class="news-thumb" style="background:#eee;display:flex;align-items:center;justify-content:center;">🍌</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="news-thumb" style="background:#eee;display:flex;align-items:center;justify-content:center;">🍌</div>', unsafe_allow_html=True)
                     
-                    # Use tracking link on title
+                    # Display source and score
                     st.markdown(f'''
                         <div class="news-content">
-                            <div class="news-meta">{item['source']} • {item['published'][:10]}</div>
-                            <a href="{tracking_link}" target="_self" style="text-decoration:none;color:inherit;">
+                            <div class="news-meta">{item['source']} • {item['published'][:10]}
+                            <span class="score-badge">🏆 {score}点</span></div>
+                            <a href="{item["link"]}" target="_blank" style="text-decoration:none;color:inherit;">
                                 <div class="news-title">{item['title']}</div>
                             </a>
                             <div class="news-excerpt">{item['summary'][:60]}...</div>

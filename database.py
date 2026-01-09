@@ -74,25 +74,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# --- Read History Management ---
-def mark_article_read(email, url):
-    """Mark an article as read for a user."""
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO read_history (email, article_url, read_at) VALUES (?, ?, ?)",
-              (email, url, time.time()))
-    conn.commit()
-    conn.close()
-
-def get_read_articles(email):
-    """Get set of read article URLs for a user."""
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT article_url FROM read_history WHERE email = ?", (email,))
-    rows = c.fetchall()
-    conn.close()
-    return {row[0] for row in rows}
-
 # --- User Management ---
 def hash_password(password):
     """Hash a password for storage."""
