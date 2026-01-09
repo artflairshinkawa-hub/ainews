@@ -87,11 +87,11 @@ if st.session_state.user is None:
         if "@" in str(result): # Check if result is an email
             st.session_state.user = result
             load_user_session()
+            time.sleep(0.1) 
             st.rerun() 
         else:
-            # Optional: Clear invalid cookie if it exists but failed verification
-            # This prevents constant DB checks for outdated tokens
-            # but we only do it if we are sure it won't cause infinite loops
+            # Result is an error code like TOKEN_NOT_FOUND or IP_MISMATCH
+            # We don't delete the cookie yet, just let the user know they need to login once normally
             pass
 
 
