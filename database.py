@@ -188,7 +188,7 @@ def create_persistent_session(email, ip_address):
     return token
 
 def verify_persistent_session(token, ip_address):
-    """Check if token is valid, not expired, and IP matches. Returns email if OK, else reason string."""
+    """Check if token is valid, not expired, and IP matches (loosely). Returns email if OK, else reason string."""
     if not token: return "NO_TOKEN_GIVEN"
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -204,10 +204,19 @@ def verify_persistent_session(token, ip_address):
             conn.close()
             return "EXPIRED"
             
-        # Check IP (Strict match for security)
-        if stored_ip and stored_ip != ip_address:
-            conn.close()
-            return f"IP_MISMATCH:stored={stored_ip}"
+        # Check IP (Loosened: Check first two octets if possible)
+        def get_subnet(ip):
+            parts = str(ip).split(".")
+            if len(parts) >= 2:
+                return ".".join(parts[:2])
+            return str(ip)
+
+        if stored_ip and ip_address:
+            stored_sub = get_subnet(stored_ip)
+            current_sub = get_subnet(ip_address)
+            if stored_sub != current_sub:
+                conn.close()
+                return f"IP_MISMATCH:stored={stored_ip}"
             
         # Success! Update activity
         new_expires = time.time() + SESSION_TIMEOUT

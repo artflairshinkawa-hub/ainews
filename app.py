@@ -277,7 +277,10 @@ with st.sidebar:
             st.write(f"Active Token: `{token[:10]}...`")
             # Verify manually in debug view
             user_check = db.verify_persistent_session(token, ip)
-            st.write(f"DB Verification Result: `{user_check or 'FAILED'}`")
+            if "@" in str(user_check):
+                st.success(f"DB Verification: ✅ {user_check}")
+            else:
+                st.error(f"DB Verification: ❌ {user_check}")
         else:
             st.warning("No session token found in browser.")
             
