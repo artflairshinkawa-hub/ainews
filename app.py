@@ -5,6 +5,16 @@ import extra_streamlit_components as stx
 # --- Cookie Management (Library-based) ---
 # Initialize CookieManager directly (cannot be cached as it contains a widget)
 cookie_manager = stx.CookieManager()
+
+def set_cookie_js(name, value, days=2):
+    """Set a cookie using CookieManager."""
+    # Use explicit UTC expiration for better cross-timezone support
+    expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days)
+    cookie_manager.set(name, value, expires_at=expires)
+
+def delete_cookie_js(name):
+    """Delete a cookie using CookieManager."""
+    cookie_manager.delete(name)
 import feedparser
 import time
 import pandas as pd
@@ -222,16 +232,6 @@ def send_auth_email(target_email, subject, body):
              st.error(f"メール送信エラー: {str(e)}")
         return False
 
-# --- Cookie Management (Library-based) ---
-def set_cookie_js(name, value, days=2):
-    """Set a cookie using CookieManager."""
-    # Use explicit UTC expiration for better cross-timezone support
-    expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days)
-    cookie_manager.set(name, value, expires_at=expires)
-
-def delete_cookie_js(name):
-    """Delete a cookie using CookieManager."""
-    cookie_manager.delete(name)
 
 def get_remote_ip():
     """Get remote user IP from headers."""
