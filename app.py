@@ -807,30 +807,28 @@ st.markdown(f"""
     section[data-testid="stSidebar"] button {{
         color: {c['text']} !important;
     }}
-    /* Brute-force Sidebar Toggle Visibility - v3 */
+    /* Elegant Sidebar Toggle Visibility - v4 (Refined) */
     button[data-testid="stSidebarCollapse"],
     button[aria-label="Expand sidebar"],
-    button[aria-label="Collapse sidebar"],
-    header button,
-    section[data-testid="stSidebar"] button {{
-        background-color: {c['sidebar_bg']} !important;
-        border: 2px solid {c['text']} !important;
+    button[aria-label="Collapse sidebar"] {{
+        background-color: transparent !important;
+        border: none !important;
         color: {c['text']} !important;
-        padding: 4px !important;
-        border-radius: 8px !important;
+        opacity: 0.7 !important;
+        transition: all 0.3s ease !important;
+    }}
+    button[data-testid="stSidebarCollapse"]:hover,
+    button[aria-label="Expand sidebar"]:hover,
+    button[aria-label="Collapse sidebar"]:hover {{
+        background-color: {c['border']}22 !important; /* Very subtle tint */
         opacity: 1 !important;
-        z-index: 99999 !important;
-        visibility: visible !important;
-        display: flex !important;
     }}
     button[data-testid="stSidebarCollapse"] svg,
     button[aria-label="Expand sidebar"] svg,
-    button[aria-label="Collapse sidebar"] svg,
-    header button svg {{
+    button[aria-label="Collapse sidebar"] svg {{
         fill: {c['text']} !important;
-        stroke: {c['text']} !important;
-        width: 24px !important;
-        height: 24px !important;
+        width: 20px !important;
+        height: 20px !important;
     }}
     header[data-testid="stHeader"] {{ background-color: transparent !important; }}
     
