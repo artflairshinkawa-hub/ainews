@@ -955,6 +955,14 @@ st.markdown(f"""
         transform: translateY(-5px);
         box-shadow: 0 6px 20px rgba(0,0,0,0.4);
     }}
+    /* Card Hover Effects */
+    .news-item {{
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }}
+    .news-item:hover {{
+        transform: translateY(-4px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+    }}
 </style>
 """, unsafe_allow_html=True)
 
