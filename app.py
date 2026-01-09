@@ -1006,15 +1006,15 @@ st.markdown(f"""
         box-shadow: 0 6px 20px rgba(0,0,0,0.4);
     }}
     /* Read article styling */
-    .news-item.read {
+    .news-item.read {{
         opacity: 0.6;
         filter: grayscale(80%);
         transition: all 0.3s ease;
-    }
-    .news-item.read:hover {
+    }}
+    .news-item.read:hover {{
         opacity: 0.9;
         filter: grayscale(0%);
-    }
+    }}
 </style>
 """, unsafe_allow_html=True)
 
