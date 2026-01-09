@@ -36,6 +36,16 @@ def init_db():
         )
     ''')
     
+    # Persistent Session Table (Multi-user token-based)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS persistent_sessions (
+            token TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            expires_at REAL NOT NULL,
+            FOREIGN KEY (email) REFERENCES users (email)
+        )
+    ''')
+    
     conn.commit()
     conn.close()
 
@@ -149,3 +159,49 @@ def load_user_data(email, key, default=None):
     if row:
         return json.loads(row[0])
     return default
+
+# --- Token-based Session Management ---
+def create_persistent_session(email):
+    """Generate a random 32-char token and save to DB."""
+    token = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+    expires_at = time.time() + SESSION_TIMEOUT
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT INTO persistent_sessions (token, email, expires_at) VALUES (?, ?, ?)",
+              (token, email, expires_at))
+    conn.commit()
+    conn.close()
+    return token
+
+def verify_persistent_session(token):
+    """Check if token is valid and not expired. Returns email if OK, else None."""
+    if not token: return None
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT email, expires_at FROM persistent_sessions WHERE token = ?", (token,))
+    row = c.fetchone()
+    
+    if row:
+        email, expires_at = row
+        if time.time() < expires_at:
+            # Update activity
+            new_expires = time.time() + SESSION_TIMEOUT
+            c.execute("UPDATE persistent_sessions SET expires_at = ? WHERE token = ?", (new_expires, token))
+            conn.commit()
+            conn.close()
+            return email
+        else:
+            # Expired, clean up
+            c.execute("DELETE FROM persistent_sessions WHERE token = ?",(token,))
+            conn.commit()
+    conn.close()
+    return None
+
+def delete_persistent_session(token):
+    """Remove a session token on logout."""
+    if not token: return
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM persistent_sessions WHERE token = ?", (token,))
+    conn.commit()
+    conn.close()

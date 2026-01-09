@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import feedparser
 import time
 import pandas as pd
@@ -53,6 +54,14 @@ ALL_SOURCES = [
 # --- Session State ---
 if 'user' not in st.session_state:
     st.session_state.user = None
+    # Try to load persistent session via cookie
+    cookies = st.context.cookies
+    token = cookies.get('session_token')
+    if token:
+        valid_user = db.verify_persistent_session(token)
+        if valid_user:
+            st.session_state.user = valid_user
+            load_user_session()
 
 
 # Logic to load user data if logged in
@@ -179,6 +188,26 @@ def send_auth_email(target_email, subject, body):
         else:
              st.error(f"メール送信エラー: {str(e)}")
         return False
+
+# --- Cookie Management (JS Helpers) ---
+def set_cookie_js(name, value, days=2):
+    """Set a cookie via JS injection."""
+    expires = days * 24 * 60 * 60
+    js_code = f"""
+        <script>
+        document.cookie = "{name}={value}; Max-Age={expires}; Path=/; SameSite=Lax";
+        </script>
+    """
+    components.html(js_code, height=0)
+
+def delete_cookie_js(name):
+    """Delete a cookie via JS injection."""
+    js_code = f"""
+        <script>
+        document.cookie = "{name}=; Max-Age=0; Path=/; SameSite=Lax";
+        </script>
+    """
+    components.html(js_code, height=0)
 
 @st.cache_data(ttl=300)
 def fetch_news(source, category_code, query_text):
@@ -655,10 +684,17 @@ def clear_auth_flow():
 
 # Full logout helper
 def logout():
+    # Remove from DB if token exists
+    token = st.context.cookies.get('session_token')
+    if token:
+        db.delete_persistent_session(token)
+    
     st.session_state.user = None
     st.session_state.guest_mode = False
     clear_auth_flow()
     reset_to_defaults()
+    # Clear browser cookie
+    delete_cookie_js('session_token')
 
 if not st.session_state.user and not st.session_state.guest_mode:
     # --- Login/Register/Recovery UI ---
@@ -681,7 +717,12 @@ if not st.session_state.user and not st.session_state.guest_mode:
             code_input = st.text_input("認証コード", key="2fa_code")
             if st.button("認証", use_container_width=True, type="primary"):
                 if db.verify_2fa(st.session_state.temp_email, code_input):
-                    st.session_state.user = st.session_state.temp_email
+                    email = st.session_state.temp_email
+                    st.session_state.user = email
+                    # Create persistent session
+                    token = db.create_persistent_session(email)
+                    set_cookie_js('session_token', token)
+                    
                     load_user_session() # Load settings for the new user
                     clear_auth_flow()   # Clear intermediate auth state
                     st.rerun()
