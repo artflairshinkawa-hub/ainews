@@ -98,6 +98,34 @@ def setup_touch_icon():
 st.set_page_config(page_title="AI News Pro", page_icon="🍌", layout="wide")
 setup_touch_icon()
 
+# --- Redirect Handler for Read Tracking ---
+# Must be at the very top to intercept before UI rendering
+read_target = st.query_params.get("read")
+if read_target:
+    # 1. Mark as read in session
+    if 'read_articles' not in st.session_state:
+        st.session_state.read_articles = set()
+    st.session_state.read_articles.add(read_target)
+    
+    # 2. Mark as read in DB if logged in
+    # We need to manually check auth here because normal flow hasn't run yet
+    try:
+        user_email = None
+        s_token = st.query_params.get('s')
+        if s_token:
+            ip = get_remote_ip()
+            res = db.verify_persistent_session(s_token, ip)
+            if "@" in str(res): user_email = res
+            
+        if user_email:
+            db.mark_article_read(user_email, read_target)
+    except:
+        pass
+        
+    # 3. Client-side Redirect
+    st.markdown(f'<meta http-equiv="refresh" content="0;url={read_target}">', unsafe_allow_html=True)
+    st.stop() # Stop further rendering
+
 ALL_SOURCES = [
     "Bing News", "Yahoo! ニュース", "ライブドアニュース", "NHK ニュース", 
     "Google News", "Gigazine", "ITmedia", "CNET Japan", 
@@ -112,12 +140,16 @@ def load_user_session():
         st.session_state.bookmarks = db.load_user_data(username, 'bookmarks', [])
         saved_theme = db.load_user_data(username, 'theme', 'Dark')
         st.session_state.theme = saved_theme
+        st.session_state.theme = saved_theme
         st.session_state.mute_words = db.load_user_data(username, 'mute_words', [])
+        st.session_state.read_articles = db.get_read_articles(username)
 
 if 'theme' not in st.session_state:
     st.session_state.theme = 'Dark'
 if 'bookmarks' not in st.session_state:
     st.session_state.bookmarks = []
+if 'read_articles' not in st.session_state:
+    st.session_state.read_articles = set()
 if 'recommendation_keywords' not in st.session_state:
     st.session_state.recommendation_keywords = []
 if 'date_filter' not in st.session_state:
@@ -295,6 +327,24 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
+
+    with st.sidebar:
+        st.markdown("### フィルタ")
+        sort_option = st.selectbox("並び順", ["おすすめ順", "新しい順", "ソース別"])
+        
+        # Date Filter
+        date_labels = ["すべて", "今日", "過去3日", "過去1週間"]
+        date_default_index = 0
+        if st.session_state.date_filter in date_labels:
+            date_default_index = date_labels.index(st.session_state.date_filter)
+            
+        selected_date_filter = st.selectbox("日付", date_labels, index=date_default_index, key="date_filter_box")
+        if selected_date_filter != st.session_state.date_filter:
+            st.session_state.date_filter = selected_date_filter
+            st.rerun()
+
+        # Hide Read Filter
+        hide_read = st.checkbox("既読を非表示", value=False, key="hide_read_toggle")
 
     # Mute Settings
     with st.expander("ミュート設定"):
@@ -955,6 +1005,16 @@ st.markdown(f"""
         transform: translateY(-5px);
         box-shadow: 0 6px 20px rgba(0,0,0,0.4);
     }}
+    /* Read article styling */
+    .news-item.read {
+        opacity: 0.6;
+        filter: grayscale(80%);
+        transition: all 0.3s ease;
+    }
+    .news-item.read:hover {
+        opacity: 0.9;
+        filter: grayscale(0%);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1250,27 +1310,46 @@ with tab2:
                 for score, item in display_items:
                     ik = f"ic_{item['id']}"
                     if not item['img_src'] and ik not in st.session_state:
-                        st.session_state[ik] = fetch_og_image(item['link'])
+                         st.session_state[ik] = fetch_og_image(item['link'])
                 st.rerun()
             
             cols = st.columns(3)
+            current_app_url = st.query_params.get("base_url", "") # Not reliable, just use relative
+            
             for i, (score, item) in enumerate(display_items):
+                # Check read status
+                is_read = item['link'] in st.session_state.read_articles
+                if hide_read and is_read:
+                    continue
+                    
+                read_class = "read" if is_read else ""
+                
+                # Construct tracking URL (Current App + ?read=TARGET)
+                # We use a trick: relative path "./?read=..." but Streamlit routing implies we need base url
+                # Actually, standard "?read=..." works relative to current page
+                tracking_link = f"./?read={quote(item['link'])}"
+                
                 with cols[i % 3]:
-                    st.markdown(f'<div class="news-item">', unsafe_allow_html=True)
+                    st.markdown(f'<div class="news-item {read_class}">', unsafe_allow_html=True)
                     ik = f"ic_{item['id']}"
                     img = item['img_src'] or st.session_state.get(ik)
                     
-                    # Display source and score
-                    st.markdown(
-                        f'<div class="news-meta">{item["source"]} • {item["published"]}'
-                        f'<span class="score-badge">🏆 {score}点</span></div>', 
-                        unsafe_allow_html=True
-                    )
-                    if img: st.markdown(f'<a href="{item["link"]}" target="_blank"><img src="{img}" class="news-thumb"></a>', unsafe_allow_html=True)
-                    st.markdown(f'<a href="{item["link"]}" target="_blank" class="news-title-link"><div class="news-title">{item["title"]}</div></a>', unsafe_allow_html=True)
+                    if img:
+                        # Use tracking link on image
+                         st.markdown(f'<a href="{tracking_link}" target="_self"><img src="{img}" class="news-thumb"></a>', unsafe_allow_html=True)
+                    else:
+                         st.markdown(f'<div class="news-thumb" style="background:#eee;display:flex;align-items:center;justify-content:center;">🍌</div>', unsafe_allow_html=True)
                     
-                    if item['summary']:
-                        st.markdown(f'<div class="news-excerpt">{item["summary"]}</div>', unsafe_allow_html=True)
+                    # Use tracking link on title
+                    st.markdown(f'''
+                        <div class="news-content">
+                            <div class="news-meta">{item['source']} • {item['published'][:10]}</div>
+                            <a href="{tracking_link}" target="_self" style="text-decoration:none;color:inherit;">
+                                <div class="news-title">{item['title']}</div>
+                            </a>
+                            <div class="news-excerpt">{item['summary'][:60]}...</div>
+                        </div>
+                    ''', unsafe_allow_html=True)
                     
                     if st.button("保存 🔖", key=f"rec_sav_{i}", use_container_width=True):
                         if not any(b['link'] == item['link'] for b in st.session_state.bookmarks):

@@ -60,8 +60,38 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    # Read History Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS read_history (
+            email TEXT,
+            article_url TEXT,
+            read_at REAL,
+            PRIMARY KEY (email, article_url),
+            FOREIGN KEY (email) REFERENCES users (email)
+        )
+    ''')
+
     conn.commit()
     conn.close()
+
+# --- Read History Management ---
+def mark_article_read(email, url):
+    """Mark an article as read for a user."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO read_history (email, article_url, read_at) VALUES (?, ?, ?)",
+              (email, url, time.time()))
+    conn.commit()
+    conn.close()
+
+def get_read_articles(email):
+    """Get set of read article URLs for a user."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT article_url FROM read_history WHERE email = ?", (email,))
+    rows = c.fetchall()
+    conn.close()
+    return {row[0] for row in rows}
 
 # --- User Management ---
 def hash_password(password):
