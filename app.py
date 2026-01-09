@@ -798,15 +798,21 @@ st.markdown(f"""
         background-color: {c['bg']};
     }}
     
-    /* Target only headings INSIDE the User Guide dialog for contrast */
-    [data-testid="stDialog"] h1, 
-    [data-testid="stDialog"] h2, 
-    [data-testid="stDialog"] h3 {{
+    /* Dialog Consistency & Contrast Fix */
+    div[data-testid="stDialog"] div[role="dialog"] {{
+        background-color: {c['bg']} !important;
+        color: {c['text']} !important;
+    }}
+    
+    div[data-testid="stDialog"] h1, 
+    div[data-testid="stDialog"] h2, 
+    div[data-testid="stDialog"] h3,
+    div[data-testid="stDialog"] p,
+    div[data-testid="stDialog"] label,
+    div[data-testid="stDialog"] span,
+    div[data-testid="stDialog"] li {{
         color: {c['text']} !important;
         -webkit-text-fill-color: {c['text']} !important;
-    }}
-    [data-testid="stDialog"] [data-testid="stMarkdownContainer"] p {{
-        color: {c['text']} !important;
     }}
     
     header[data-testid="stHeader"] svg,
