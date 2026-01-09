@@ -194,10 +194,10 @@ def send_auth_email(target_email, subject, body):
 def set_cookie_js(name, value, days=2):
     """Set a cookie via JS injection."""
     expires = days * 24 * 60 * 60
-    # Simple cookie for better compatibility (Lax is default)
+    # Use SameSite=None; Secure for better compatibility in iframes (Streamlit Cloud)
     js_code = f"""
         <script>
-        document.cookie = "{name}={value}; Max-Age={expires}; Path=/;";
+        document.cookie = "{name}={value}; Max-Age={expires}; Path=/; SameSite=None; Secure";
         </script>
     """
     components.html(js_code, height=0)
@@ -206,7 +206,7 @@ def delete_cookie_js(name):
     """Delete a cookie via JS injection."""
     js_code = f"""
         <script>
-        document.cookie = "{name}=; Max-Age=0; Path=/;";
+        document.cookie = "{name}=; Max-Age=0; Path=/; SameSite=None; Secure";
         </script>
     """
     components.html(js_code, height=0)
@@ -214,10 +214,12 @@ def delete_cookie_js(name):
 def get_remote_ip():
     """Get remote user IP from headers."""
     try:
-        # X-Forwarded-For is common for Cloud/Proxies
-        xff = st.context.headers.get("X-Forwarded-For")
-        if xff:
-            return xff.split(",")[0]
+        # Check various headers for IP
+        headers = st.context.headers
+        for header in ["X-Forwarded-For", "X-Real-IP", "Remote-Addr"]:
+            val = headers.get(header)
+            if val:
+                return val.split(",")[0].strip()
         return "0.0.0.0"
     except:
         return "0.0.0.0"
@@ -237,6 +239,19 @@ with st.sidebar:
         if st.button("ログイン / 登録", use_container_width=True):
             st.session_state.guest_mode = False
             st.rerun()
+
+    # --- Debug: Persistence Info (Only for testing) ---
+    with st.expander("🔍 Debug: ログイン維持状態", expanded=True):
+        ip = get_remote_ip()
+        st.write(f"IP: `{ip}`")
+        st.write("Cookies:", st.context.cookies)
+        token = st.context.cookies.get('session_token')
+        if token:
+            st.success(f"Token Detected")
+            # Show if IP matches check would pass
+            st.write(f"Token: `{token[:10]}...`")
+        else:
+            st.warning("Token NOT Found")
 
     st.markdown("### Settings")
     theme_btn = st.radio("テーマ選択", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "Dark" else 1)
