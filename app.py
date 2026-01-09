@@ -2,51 +2,33 @@ import streamlit as st
 import streamlit.components.v1 as components
 import extra_streamlit_components as stx
 
-# --- Cookie Management (Robust JS Implementation) ---
-# We avoid CookieManager library here as it can be flaky in iframes
+# --- Persistence Management (URL & IP Based) ---
+# We avoid Cookies as they are blocked in many iframe environments
 
-def set_cookie_js(name, value, days=2):
-    """Set a cookie using Raw JS with multiple fallback strategies and error handling."""
-    import datetime
-    max_age = days * 24 * 60 * 60
-    
-    # Detection for HTTPS (Streamlit Cloud uses proxies that set this header)
-    is_https = st.context.headers.get("X-Forwarded-Proto", "").lower() == "https"
-    
-    # Strategically try multiple attribute sets
-    js_code = f"""
-        <script>
-        function setCookie(n, v, days, s) {{
-            let d = new Date();
-            d.setTime(d.getTime() + (days*24*60*60*1000));
-            let expires = "expires="+ d.toUTCString();
-            document.cookie = n + "=" + v + ";" + expires + ";path=/;" + s;
-        }}
-        
-        // 1. Primary Site Token
-        setCookie("{name}", "{value}", {days}, "{'SameSite=None; Secure' if is_https else 'SameSite=Lax'}");
-        
-        // 2. Backup Local Token
-        setCookie("{name}_backup", "{value}", {days}, "SameSite=Lax");
-        
-        // 3. Simple Token
-        setCookie("{name}_simple", "{value}", {days}, "");
-        
-        console.log("Persistence tokens set at " + new Date().toISOString());
-        </script>
-    """
-    components.html(js_code, height=0)
+def get_remote_ip():
+    """Get remote user IP from headers."""
+    try:
+        headers = st.context.headers
+        for header in ["X-Forwarded-For", "X-Real-IP", "Remote-Addr"]:
+            val = headers.get(header)
+            if val:
+                return val.split(",")[0].strip()
+        return "0.0.0.0"
+    except:
+        return "0.0.0.0"
 
-def delete_cookie_js(name):
-    """Delete all variations of the cookie."""
-    js_code = f"""
-        <script>
-        document.cookie = "{name}=; Max-Age=0; Path=/;";
-        document.cookie = "{name}_backup=; Max-Age=0; Path=/;";
-        document.cookie = "{name}_simple=; Max-Age=0; Path=/;";
-        </script>
-    """
-    components.html(js_code, height=0)
+def logout():
+    # Remove from DB if token exists in URL or state
+    token = st.query_params.get('s')
+    if token:
+        db.delete_persistent_session(token)
+    
+    st.session_state.user = None
+    st.session_state.guest_mode = False
+    st.query_params.clear() # Clear URL params
+    clear_auth_flow()
+    reset_to_defaults()
+    st.rerun()
 import feedparser
 import time
 import pandas as pd
@@ -111,23 +93,24 @@ ALL_SOURCES = [
     "TechCrunch Japan", "Qiita", "Zenn", "ナタリー"
 ]
 
-# --- Session State ---
+# --- Session State & URL Persistence ---
 if 'user' not in st.session_state:
     st.session_state.user = None
 
-# Robust persistent session loader
+# Load persistent session from URL or IP
 if st.session_state.user is None:
-    cookies = st.context.cookies
-    # Try all backup names
-    token = cookies.get('session_token') or cookies.get('session_token_backup') or cookies.get('session_token_simple')
-    
+    # 1. Try URL Query Parameter (Bookmark Link)
+    token = st.query_params.get('s')
     if token:
         ip = get_remote_ip()
         result = db.verify_persistent_session(token, ip)
         if "@" in str(result):
             st.session_state.user = result
             load_user_session()
-            st.rerun()
+            # Success!
+        else:
+            # Token invalid/expired, clear it from URL
+            st.query_params.clear()
 
 
 # Logic to load user data if logged in
@@ -285,27 +268,26 @@ with st.sidebar:
             st.session_state.guest_mode = False
             st.rerun()
 
-    # --- Debug: Persistence Info (Only for testing) ---
-    with st.expander("🔍 Debug: ログイン維持状態", expanded=True):
-        ip = get_remote_ip()
-        st.write(f"Detected IP: `{ip}`")
-        st.write("Current Cookies:", st.context.cookies)
-        
-        cookies = st.context.cookies
-        token = cookies.get('session_token') or cookies.get('session_token_backup') or cookies.get('session_token_simple')
-        
-        if token:
-            st.write(f"Active Token: `{token[:10]}...`")
-            user_check = db.verify_persistent_session(token, ip)
-            if "@" in str(user_check):
-                st.success(f"DB Verification: ✅ {user_check}")
-            else:
-                st.error(f"DB Verification: ❌ {user_check}")
+        # No tokens in URL, check IP for "Quick Resume"
         else:
-            st.warning("No session token found in browser.")
-            
-        if st.button("🔄 Force Refresh", key="debug_refresh"):
-            st.rerun()
+            ip = get_remote_ip()
+            resume_data = db.get_latest_session_by_ip(ip)
+            if resume_data:
+                email, token = resume_data
+                st.info(f"💡 前回のログイン（{email}）が見つかりました。")
+                if st.button(f"「{email}」として再開する", use_container_width=True):
+                    st.session_state.user = email
+                    st.query_params['s'] = token # Add token to URL for next time
+                    load_user_session()
+                    st.rerun()
+
+    # --- Bookmark Info (Visible when logged in) ---
+    if st.session_state.user:
+        current_token = st.query_params.get('s')
+        if current_token:
+            with st.expander("📌 継続ログインの設定", expanded=False):
+                st.write("このページを**ブックマーク（お気に入り登録）**しておくと、次回から自動ログインされます。")
+                st.code(f"https://share.streamlit.io/artflairshinkawa-hub/ainews/main/app.py?s={current_token}")
             
         if st.button("🗑️ Reset Persistence (Delete Bad Cookie)", key="debug_clear"):
             delete_cookie_js('session_token')
@@ -973,16 +955,12 @@ if not st.session_state.user and not st.session_state.guest_mode:
                     # Create persistent session
                     ip = get_remote_ip()
                     token = db.create_persistent_session(email, ip)
-                    set_cookie_js('session_token', token)
-                    st.success("ログイン成功！設定を保存しています...")
-                    time.sleep(1.0) # WAIT for JS execution and browser commit
+                    st.query_params['s'] = token # Put token in URL
                     
                     load_user_session()
                     clear_auth_flow()
-                    if st.button("アプリに入る 🚀", use_container_width=True):
-                        st.rerun()
-                    # Also try auto-rerun after a bit longer
-                    # st.rerun() # We'll remove automatic rerun and let the user click or wait
+                    st.success("ログイン成功！")
+                    st.rerun()
                 else:
                     st.error("コードが間違っています")
             if st.button("戻る", use_container_width=True):

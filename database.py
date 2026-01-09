@@ -236,3 +236,18 @@ def delete_persistent_session(token):
     c.execute("DELETE FROM persistent_sessions WHERE token = ?", (token,))
     conn.commit()
     conn.close()
+
+def get_latest_session_by_ip(ip_address):
+    """Find the most recent valid session for this IP."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    # Check for sessions within the same subnet (Loosened)
+    # We'll just look for exact or recent matches for simplicity in this helper
+    c.execute("""
+        SELECT email, token FROM persistent_sessions 
+        WHERE expires_at > ? AND ip_address LIKE ?
+        ORDER BY expires_at DESC LIMIT 1
+    """, (time.time(), f"{'.'.join(ip_address.split('.')[:2])}%"))
+    row = c.fetchone()
+    conn.close()
+    return row # (email, token) or None
