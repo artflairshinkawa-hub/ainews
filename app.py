@@ -193,9 +193,10 @@ def send_auth_email(target_email, subject, body):
 def set_cookie_js(name, value, days=2):
     """Set a cookie via JS injection."""
     expires = days * 24 * 60 * 60
+    # Use SameSite=None; Secure for better compatibility in iframes (Streamlit Cloud)
     js_code = f"""
         <script>
-        document.cookie = "{name}={value}; Max-Age={expires}; Path=/; SameSite=Lax";
+        document.cookie = "{name}={value}; Max-Age={expires}; Path=/; SameSite=None; Secure";
         </script>
     """
     components.html(js_code, height=0)
@@ -204,10 +205,40 @@ def delete_cookie_js(name):
     """Delete a cookie via JS injection."""
     js_code = f"""
         <script>
-        document.cookie = "{name}=; Max-Age=0; Path=/; SameSite=Lax";
+        document.cookie = "{name}=; Max-Age=0; Path=/; SameSite=None; Secure";
         </script>
     """
     components.html(js_code, height=0)
+
+# --- Sidebar (Moved up for visibility during login) ---
+with st.sidebar:
+    st.markdown(f"<h1 style='color: {c['text']}; display: flex; align-items: center; gap: 10px;'><span style='font-size: 1.5em;'>🍌</span> AI News Pro</h1>", unsafe_allow_html=True)
+    
+    if st.session_state.user:
+        st.caption(f"Logged in: {st.session_state.user}")
+        if st.button("ログアウト", use_container_width=True):
+            logout()
+            st.rerun()
+    else:
+        st.caption("Guest Mode")
+        st.info("ゲストモードでは設定は保存されません")
+        if st.button("ログイン / 登録", use_container_width=True):
+            st.session_state.guest_mode = False
+            st.rerun()
+
+    # --- Debug: Show Cookies ---
+    with st.expander("Debug: Cookies", expanded=True):
+        st.write("Raw Cookies:", st.context.cookies)
+        st.write("Token Found:", st.context.cookies.get('session_token'))
+        
+    st.markdown("### Settings")
+    theme_btn = st.radio("テーマ選択", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "Dark" else 1)
+    if theme_btn != st.session_state.theme:
+        st.session_state.theme = theme_btn
+        # Save theme setting
+        if st.session_state.user:
+            db.save_user_data(st.session_state.user, 'theme', theme_btn)
+        st.rerun()
 
 @st.cache_data(ttl=300)
 def fetch_news(source, category_code, query_text):
@@ -830,30 +861,7 @@ if not st.session_state.user and not st.session_state.guest_mode:
     
     st.stop() # Stop execution here if not logged in
 
-# --- Sidebar ---
-with st.sidebar:
-    st.markdown(f"<h1 style='color: {c['text']}; display: flex; align-items: center; gap: 10px;'><span style='font-size: 1.5em;'>🍌</span> AI News Pro</h1>", unsafe_allow_html=True)
-    
-    if st.session_state.user:
-        st.caption(f"Logged in: {st.session_state.user}")
-        if st.button("ログアウト", use_container_width=True):
-            logout()
-            st.rerun()
-    else:
-        st.caption("Guest Mode")
-        st.info("ゲストモードでは設定は保存されません")
-        if st.button("ログイン / 登録", use_container_width=True):
-            st.session_state.guest_mode = False
-            st.rerun()
-        
-    st.markdown("### Settings")
-    theme_btn = st.radio("テーマ選択", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "Dark" else 1)
-    if theme_btn != st.session_state.theme:
-        st.session_state.theme = theme_btn
-        # Save theme setting
-        if st.session_state.user:
-            db.save_user_data(st.session_state.user, 'theme', theme_btn)
-        st.rerun()
+    st.divider()
 
     # Mute Settings
     with st.expander("ミュート設定"):
