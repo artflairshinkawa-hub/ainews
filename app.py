@@ -422,7 +422,7 @@ def fetch_news(source, category_code, query_text):
     
     # --- Global Top Aggregation Logic ---
     if source == "⚡ 総合トップ":
-        # Aggregate from EVERY available source
+        # Aggregate from EVERY available source with BALANCED sampling
         source_configs = {
             "Bing News": "HEADLINES",
             "Yahoo! ニュース": "HEADLINES",
@@ -441,10 +441,14 @@ def fetch_news(source, category_code, query_text):
         all_items = []
         seen_links = set()
         
+        # Take only TOP 5 articles from each source for balance
+        ARTICLES_PER_SOURCE = 5
+        
         for src, cat in source_configs.items():
             try:
                 items = fetch_news(src, cat, "")
-                for item in items:
+                # Take only first N items from each source
+                for item in items[:ARTICLES_PER_SOURCE]:
                     if item['link'] not in seen_links:
                         all_items.append(item)
                         seen_links.add(item['link'])
@@ -454,8 +458,8 @@ def fetch_news(source, category_code, query_text):
         # Sort by published date (newest first)
         all_items.sort(key=lambda x: x['published'], reverse=True)
         
-        # Take top 50
-        return all_items[:50]
+        # Return balanced mix (60 articles = 12 sources × 5 each)
+        return all_items[:60]
 
     # --- Standard Source Logic ---
     url = ""
