@@ -793,9 +793,13 @@ st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
     
-    html, body, [data-testid="stAppViewContainer"] {{
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stDialog"] {{
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         background-color: {c['bg']};
+        color: {c['text']} !important;
+    }}
+    h1, h2, h3, h4 {{
+        color: {c['text']} !important;
     }}
     
     header[data-testid="stHeader"] svg,
