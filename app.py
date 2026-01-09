@@ -9,7 +9,7 @@ import feedparser
 import time
 import pandas as pd
 from bs4 import BeautifulSoup
-from datetime import datetime
+import datetime
 import requests
 import re
 import base64
@@ -59,14 +59,27 @@ ALL_SOURCES = [
 # --- Session State ---
 if 'user' not in st.session_state:
     st.session_state.user = None
-    # Try to load persistent session via CookieManager
+
+# Try to load persistent session if not logged in
+if st.session_state.user is None:
+    # 1. Try CookieManager (Standard for library use)
     token = cookie_manager.get('session_token')
+    # 2. Try native st.context.cookies (Fallback if component slow to load)
+    if not token:
+        token = st.context.cookies.get('session_token')
+        
     if token:
         ip = get_remote_ip()
         valid_user = db.verify_persistent_session(token, ip)
         if valid_user:
             st.session_state.user = valid_user
             load_user_session()
+            st.rerun() # Rerun to update entire UI to logged-in state
+        else:
+            # Optional: Clear invalid cookie if it exists but failed verification
+            # This prevents constant DB checks for outdated tokens
+            # but we only do it if we are sure it won't cause infinite loops
+            pass
 
 
 # Logic to load user data if logged in
@@ -197,9 +210,8 @@ def send_auth_email(target_email, subject, body):
 # --- Cookie Management (Library-based) ---
 def set_cookie_js(name, value, days=2):
     """Set a cookie using CookieManager."""
-    # datetime for expiration
-    import datetime
-    expires = datetime.datetime.now() + datetime.timedelta(days=days)
+    # Use explicit UTC expiration for better cross-timezone support
+    expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days)
     cookie_manager.set(name, value, expires_at=expires)
 
 def delete_cookie_js(name):
@@ -238,16 +250,26 @@ with st.sidebar:
     # --- Debug: Persistence Info (Only for testing) ---
     with st.expander("🔍 Debug: ログイン維持状態", expanded=True):
         ip = get_remote_ip()
-        st.write(f"IP: `{ip}`")
-        st.write("Native Context Cookies:", st.context.cookies)
-        token = cookie_manager.get('session_token')
-        if token:
-            st.success(f"Token Detected (via Manager)")
-            st.write(f"Token: `{token[:10]}...`")
+        st.write(f"Detected IP: `{ip}`")
+        st.write("Context Cookies:", st.context.cookies)
+        
+        token_mgr = cookie_manager.get('session_token')
+        token_ctx = st.context.cookies.get('session_token')
+        
+        st.write(f"Manager Token: `{'Found' if token_mgr else 'None'}`")
+        st.write(f"Context Token: `{'Found' if token_ctx else 'None'}`")
+        
+        if token_mgr or token_ctx:
+            token = token_mgr or token_ctx
+            st.write(f"Active Token: `{token[:10]}...`")
+            # Verify manually in debug view
+            user_check = db.verify_persistent_session(token, ip)
+            st.write(f"DB Verification Result: `{user_check or 'FAILED'}`")
         else:
-            st.warning("Token NOT Found (via Manager)")
-            if st.button("Force Cookie Check (Rerun)"):
-                st.rerun()
+            st.warning("No session token found in browser.")
+            
+        if st.button("🔄 Force Refresh (Page Rerun)", key="debug_refresh"):
+            st.rerun()
 
     st.markdown("### Settings")
     theme_btn = st.radio("テーマ選択", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "Dark" else 1)
