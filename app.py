@@ -1245,6 +1245,14 @@ with tab2:
                          st.session_state[ik] = fetch_og_image(item['link'])
                 st.rerun()
             
+            # Load app icon for placeholder
+            try:
+                with open("app_icon.png", "rb") as f:
+                    icon_b64 = base64.b64encode(f.read()).decode()
+                placeholder_img = f"data:image/png;base64,{icon_b64}"
+            except:
+                placeholder_img = None
+
             cols = st.columns(3)
             for i, (score, item) in enumerate(display_items):
                 with cols[i % 3]:
@@ -1254,8 +1262,10 @@ with tab2:
                     
                     if img:
                         st.markdown(f'<a href="{item["link"]}" target="_blank"><img src="{img}" class="news-thumb"></a>', unsafe_allow_html=True)
+                    elif placeholder_img:
+                        st.markdown(f'<a href="{item["link"]}" target="_blank"><img src="{placeholder_img}" class="news-thumb" style="object-fit: contain; padding: 10px; background: #222;"></a>', unsafe_allow_html=True)
                     else:
-                        st.markdown(f'<div class="news-thumb" style="background:#eee;display:flex;align-items:center;justify-content:center;">🍌</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="news-thumb" style="background:#333;display:flex;align-items:center;justify-content:center;font-size:3rem;">🍌</div>', unsafe_allow_html=True)
                     
                     # Display source and score
                     st.markdown(f'''
