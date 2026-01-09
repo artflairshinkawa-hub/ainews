@@ -634,6 +634,9 @@ def get_recommended_articles(keywords):
     if not keywords:
         return []
     
+    # Debug info
+    is_debug = st.session_state.get('debug_mode', False)
+    
     all_articles = []
     seen_links = set()
     
