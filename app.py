@@ -1192,7 +1192,13 @@ with tab2:
         st.markdown(f"**登録キーワード:** {', '.join(st.session_state.recommendation_keywords)}")
         
         # Sorting options
-        sort_option = st.radio("並び順", ["スコア順", "新しい順", "ソース別"], horizontal=True, key="rec_sort")
+        col_sort, col_cache = st.columns([2, 1])
+        with col_sort:
+            sort_option = st.radio("並び順", ["スコア順", "新しい順", "ソース別"], horizontal=True, key="rec_sort")
+        with col_cache:
+            if st.button("🔄 キャッシュクリア", use_container_width=True, help="最新のデータを強制的に再取得します"):
+                st.cache_data.clear()
+                st.rerun()
         
         with st.spinner("全ソースからおすすめ記事を取得中..."):
             scored_items = get_recommended_articles(st.session_state.recommendation_keywords)
